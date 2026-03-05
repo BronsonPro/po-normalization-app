@@ -85,7 +85,27 @@ if os.path.exists(parser_path):
 
 # ================== EMAIL CONFIGURATION ==================
 def load_email_config():
-    """Load email configuration from Excel file"""
+    """Load email configuration from Streamlit secrets or Excel file"""
+    try:
+        # Try Streamlit secrets first (secure)
+        if 'email' in st.secrets:
+            config = {
+                'Sender_Email': st.secrets['email']['Sender_Email'],
+                'Sender_Password': st.secrets['email']['Sender_Password'],
+                'Recipient_Email': st.secrets['email']['Recipient_Email'],
+                'SMTP_Server': st.secrets['email']['SMTP_Server'],
+                'SMTP_Port': st.secrets['email']['SMTP_Port']
+            }
+            
+            # Add Django token if available
+            if 'django' in st.secrets:
+                config['Django_Token'] = st.secrets['django']['Django_Token']
+            
+            return config
+    except Exception as e:
+        print(f"Error loading secrets: {e}")
+    
+    # Fallback to Email_Config.xlsx (if exists)
     try:
         config_path = os.path.join(BASE_DIR, "Email_Config.xlsx")
         if os.path.exists(config_path):
@@ -94,11 +114,10 @@ def load_email_config():
             for _, row in config_df.iterrows():
                 config[row['Setting']] = row['Value']
             return config
-        else:
-            return None
     except Exception as e:
         st.error(f"Error loading email config: {e}")
-        return None
+    
+    return None
 
 
 def send_email_with_attachment(file_path, po_number, party_name):
@@ -368,17 +387,26 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
         if not payload:
             return False, f"No valid items to upload. {skipped} rows skipped."
 
-        # Load JWT token
+        # Load JWT token from config or secrets
         config = load_email_config()
         django_token = ""
+        
+        # Try loading from config first
         if config:
             raw_token = config.get('Django_Token', '')
             if raw_token and str(raw_token).strip() not in ['', 'nan']:
                 django_token = str(raw_token).strip()
-
+        
+        # If not found, try secrets directly
         if not django_token:
-            return False, "Django token not found. Add Django_Token to Email_Config.xlsx"
-
+            try:
+                if 'django' in st.secrets:
+                    django_token = st.secrets['django']['Django_Token']
+            except:
+                pass
+        
+        if not django_token:
+            return False, "Django token not found. Add Django_Token to secrets or Email_Config.xlsx"
         print(f"\nSending to API... First item: {payload[0]}")
 
         response = requests.post(
@@ -1322,4 +1350,5 @@ if 'final_path' in st.session_state:
                     else:
                         st.error(upload_message)
         else:
+
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
