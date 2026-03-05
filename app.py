@@ -874,22 +874,23 @@ if po_df is not None and master_df is not None:
             st.success("✅ No mismatches found. Updating Product Name & HSN Code from Master.")
 
             if party == "Scootsy":
-                # Scootsy: Merge on Item Code to get EAN
-                upd = po.merge(master[["Item Code", "EAN", "Product Name"]], on="Item Code", how="left", suffixes=("_PO", "_MASTER"))
-                # Replace empty EAN_PO with filled EAN_MASTER
-                if "EAN_MASTER" in upd.columns:
-                    upd["EAN"] = upd["EAN_MASTER"]
-                    upd.drop(columns=["EAN_PO", "EAN_MASTER"], inplace=True, errors='ignore')
+                # Scootsy: Merge on Item Code to get EAN from master
+                # First, drop EAN from PO if it exists (it's empty for Scootsy)
+                if "EAN" in po.columns:
+                    po_for_merge = po.drop(columns=["EAN"])
+                else:
+                    po_for_merge = po.copy()
                 
-            else:
-                # All other parties: Standard EAN merge
-                upd = po.merge(
-                    master[["EAN", "Product Name", "HSN Code"]],
-                    on="EAN",
-                    how="left",
-                    suffixes=("_PO", "_MASTER")
+                # Merge to get EAN and Product Name from master
+                upd = po_for_merge.merge(
+                    master[["Item Code", "EAN", "Product Name"]], 
+                    on="Item Code", 
+                    how="left"
                 )
-
+    
+                # Debug
+                print(f"DEBUG Scootsy - EAN values after merge: {upd['EAN'].head().tolist()}")
+                print(f"DEBUG Scootsy - Columns: {upd.columns.tolist()}")
             # ---------- ADD RACK NUMBER ----------
             if rack_master is not None:
                 upd = upd.merge(rack_master, on="EAN", how="left")
@@ -1352,4 +1353,5 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
 
