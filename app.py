@@ -880,7 +880,7 @@ if po_df is not None and master_df is not None:
                 if "EAN_MASTER" in upd.columns:
                     upd["EAN"] = upd["EAN_MASTER"]
                     upd.drop(columns=["EAN_PO", "EAN_MASTER"], inplace=True, errors='ignore')
-                upd.drop(columns=["Item Code"], inplace=True, errors='ignore')
+                
             else:
                 # All other parties: Standard EAN merge
                 upd = po.merge(
@@ -1352,3 +1352,4 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
