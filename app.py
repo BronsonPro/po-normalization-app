@@ -934,7 +934,12 @@ if po_df is not None and master_df is not None:
 
             # ---------- FORCE EAN AS STRING BEFORE WRITING EXCEL ----------
             if "EAN" in upd.columns:
-                    upd["EAN"] = upd["EAN"].apply(lambda x: f"{int(float(x))}" if pd.notna(x) and x != "" else "")
+                if party == "Scootsy":
+                    # Scootsy: Convert from numeric to string properly (avoid scientific notation)
+                    upd["EAN"] = upd["EAN"].apply(lambda x: f"{int(x)}" if pd.notna(x) and x != "" and x != 0 else "")
+                else:
+                    # Other parties: Standard conversion
+                    upd["EAN"] = upd["EAN"].astype(str).str.replace(".0","", regex=False)
 
 
 
@@ -1367,6 +1372,7 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
 
 
 
