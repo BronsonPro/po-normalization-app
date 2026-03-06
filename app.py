@@ -801,6 +801,10 @@ if po_df is not None and master_df is not None:
                 st.stop()
 
         if party == "Scootsy":
+            st.write("🔍 PRE-VALIDATION DEBUG:")
+            st.write("- Total rows in po_df:", len(po))
+            st.write("- Item Codes before validation:", po["Item Code"].tolist() if "Item Code" in po.columns else "No Item Code column")
+            
             # Scootsy: Validate Item Code
             po["Item Code"] = pd.to_numeric(po["Item Code"], errors="coerce")
             po = po.dropna(subset=["Item Code"])
@@ -1397,6 +1401,7 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
 
 
 
