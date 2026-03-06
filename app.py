@@ -897,27 +897,27 @@ if po_df is not None and master_df is not None:
                     how="left"
                 )
 
-            # DEBUG - After merge
-            with st.expander("🔍 DEBUG OUTPUT - Click to expand", expanded=True):
-                st.write("**After Merge:**")
-                st.write("- Rows after merge:", len(upd))
-                st.write("- Columns:", upd.columns.tolist())
-                st.write("- Item Code:", upd["Item Code"].tolist())
-                st.write("- EAN:", upd["EAN"].tolist())
-                
-                st.write("**Original Data:**")
-                st.write("- Original PO rows:", len(po_for_merge) if 'po_for_merge' in locals() else len(po))
-                st.write("- Master rows:", len(master))
-                
-                st.write("**Item Codes:**")
-                st.write("- All Item Codes in PO:", po_for_merge["Item Code"].tolist() if 'po_for_merge' in locals() else po["Item Code"].tolist())
-                st.write("- First 20 Item Codes in Master:", master["Item Code"].head(20).tolist())
-                
-                st.write("**Sample Data:**")
-                st.dataframe(upd)
-                
-                st.write("**Master Sample (for matching):**")
-                st.dataframe(master[["Item Code", "EAN", "Product Name"]].head(10))
+                # DEBUG - After merge
+                with st.expander("🔍 DEBUG OUTPUT - Click to expand", expanded=True):
+                    st.write("**After Merge:**")
+                    st.write("- Rows after merge:", len(upd))
+                    st.write("- Columns:", upd.columns.tolist())
+                    st.write("- Item Code:", upd["Item Code"].tolist())
+                    st.write("- EAN:", upd["EAN"].tolist())
+                    
+                    st.write("**Original Data:**")
+                    st.write("- Original PO rows:", len(po_for_merge) if 'po_for_merge' in locals() else len(po))
+                    st.write("- Master rows:", len(master))
+                    
+                    st.write("**Item Codes:**")
+                    st.write("- All Item Codes in PO:", po_for_merge["Item Code"].tolist() if 'po_for_merge' in locals() else po["Item Code"].tolist())
+                    st.write("- First 20 Item Codes in Master:", master["Item Code"].head(20).tolist())
+                    
+                    st.write("**Sample Data:**")
+                    st.dataframe(upd)
+                    
+                    st.write("**Master Sample (for matching):**")
+                    st.dataframe(master[["Item Code", "EAN", "Product Name"]].head(10))
             
             # ---------- ADD RACK NUMBER ----------
             if rack_master is not None:
@@ -1387,6 +1387,7 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
 
 
 
