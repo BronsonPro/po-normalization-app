@@ -887,10 +887,17 @@ if po_df is not None and master_df is not None:
                     on="Item Code", 
                     how="left"
                 )
-    
-                # Debug
-                print(f"DEBUG Scootsy - EAN values after merge: {upd['EAN'].head().tolist()}")
-                print(f"DEBUG Scootsy - Columns: {upd.columns.tolist()}")
+                    
+                # DEBUG - Check merge results
+                st.write("🔍 DEBUG - Merge Check:")
+                st.write("Number of rows after merge:", len(upd))
+                st.write("EAN null count:", upd["EAN"].isna().sum())
+                st.write("EAN sample values:", upd["EAN"].head(10).tolist())
+                st.write("Item Code from PO:", po["Item Code"].head(5).tolist())
+                st.write("Item Code from Master:", master["Item Code"].head(5).tolist())
+                st.write("Item Code dtypes - PO:", po["Item Code"].dtype, "Master:", master["Item Code"].dtype)
+                st.write("Merge match count:", len(upd[upd["EAN"].notna()]))
+                
             # ---------- ADD RACK NUMBER ----------
             if rack_master is not None:
                 upd = upd.merge(rack_master, on="EAN", how="left")
@@ -1353,6 +1360,7 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
 
 
 
