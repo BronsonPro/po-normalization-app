@@ -532,18 +532,19 @@ def read_normalized_po_table(excel_path):
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
     # For Scootsy, skip EAN validation (they use Item Code instead)
+    # For Scootsy, skip EAN validation (they use Item Code instead)
     if party == "Scootsy":
-        df = df[
-            ((df[qty_col] > 0) if qty_col else True) &
-            ~((df[numeric_cols].sum(axis=1)) == 0)
-        ].copy()
+        # Only check quantity > 0, don't check numeric columns (might be populated later from master)
+        if qty_col:
+            df = df[df[qty_col] > 0].copy()
+        # else: keep all rows if no qty column found
     else:
         df = df[
             (df["__ean_num"].notna()) &
             ((df[qty_col] > 0) if qty_col else True) &
             ~((df[numeric_cols].sum(axis=1)) == 0)
-        ].copy()
-        
+        ].copy()        
+    
     df.drop(columns="__ean_num", inplace=True)
     if "EAN" in df.columns:
         df = df.drop_duplicates(subset=["EAN"], keep="first")
@@ -1401,6 +1402,7 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
 
 
 
