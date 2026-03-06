@@ -750,9 +750,24 @@ if po_df is not None and master_df is not None:
 
         po = normalize(po, is_master=False)
         master = normalize(master, is_master=True)
+
+        # DEBUG - After normalize
+        st.write("🔍 DEBUG - After normalize():")
+        st.write(f"PO rows: {len(po)}")
+        st.write(f"PO columns: {po.columns.tolist()}")
+        if "Item Code" in po.columns:
+            st.write(f"PO Item Codes: {po['Item Code'].tolist()}")
+        st.dataframe(po)
+
+        
         if "EAN" in po.columns:
             po = po.drop_duplicates(subset=["EAN"], keep="first")
         master = master.sort_values("EAN").drop_duplicates(subset=["EAN"], keep="first")
+
+        # DEBUG - After deduplication
+        st.write("🔍 DEBUG - After drop_duplicates():")
+        st.write(f"PO rows: {len(po)}")
+        st.dataframe(po)
 
         if party == "Nykaa":
             po_req = ["EAN", "MRP", "GST %"]
@@ -808,7 +823,16 @@ if po_df is not None and master_df is not None:
             
             # Scootsy: Validate Item Code
             po["Item Code"] = pd.to_numeric(po["Item Code"], errors="coerce")
+                    # DEBUG - After to_numeric
+            st.write("🔍 DEBUG - After to_numeric(Item Code):")
+            st.write(f"Rows with valid Item Code: {po['Item Code'].notna().sum()}")
+            st.write(f"Item Codes: {po['Item Code'].tolist()}")
+            
             po = po.dropna(subset=["Item Code"])
+                     # DEBUG - After dropna
+            st.write("🔍 DEBUG - After dropna(Item Code):")
+            st.write(f"PO rows: {len(po)}")
+            st.dataframe(po)
             po["Item Code"] = po["Item Code"].astype("int64")
             
             master["Item Code"] = pd.to_numeric(master["Item Code"], errors="coerce")
@@ -1402,6 +1426,7 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
 
 
 
