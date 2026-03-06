@@ -11,6 +11,9 @@ from email.mime.base import MIMEBase
 from email import encoders
 from email.mime.text import MIMEText
 
+# DEBUG: Disable auto-rerun to see debug messages
+if 'debug_mode' not in st.session_state:
+    st.session_state['debug_mode'] = True
 
 # ================== BASE DIR ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -893,17 +896,29 @@ if po_df is not None and master_df is not None:
                     on="Item Code", 
                     how="left"
                 )
-                    
-                # DEBUG - Check merge results
-                st.write("🔍 DEBUG - Merge Check:")
-                st.write("Number of rows after merge:", len(upd))
-                st.write("EAN null count:", upd["EAN"].isna().sum())
-                st.write("EAN sample values:", upd["EAN"].head(10).tolist())
-                st.write("Item Code from PO:", po["Item Code"].head(5).tolist())
-                st.write("Item Code from Master:", master["Item Code"].head(5).tolist())
-                st.write("Item Code dtypes - PO:", po["Item Code"].dtype, "Master:", master["Item Code"].dtype)
-                st.write("Merge match count:", len(upd[upd["EAN"].notna()]))
+
+            # DEBUG - After merge
+            with st.expander("🔍 DEBUG OUTPUT - Click to expand", expanded=True):
+                st.write("**After Merge:**")
+                st.write("- Rows after merge:", len(upd))
+                st.write("- Columns:", upd.columns.tolist())
+                st.write("- Item Code:", upd["Item Code"].tolist())
+                st.write("- EAN:", upd["EAN"].tolist())
                 
+                st.write("**Original Data:**")
+                st.write("- Original PO rows:", len(po_for_merge) if 'po_for_merge' in locals() else len(po))
+                st.write("- Master rows:", len(master))
+                
+                st.write("**Item Codes:**")
+                st.write("- All Item Codes in PO:", po_for_merge["Item Code"].tolist() if 'po_for_merge' in locals() else po["Item Code"].tolist())
+                st.write("- First 20 Item Codes in Master:", master["Item Code"].head(20).tolist())
+                
+                st.write("**Sample Data:**")
+                st.dataframe(upd)
+                
+                st.write("**Master Sample (for matching):**")
+                st.dataframe(master[["Item Code", "EAN", "Product Name"]].head(10))
+            
             # ---------- ADD RACK NUMBER ----------
             if rack_master is not None:
                 upd = upd.merge(rack_master, on="EAN", how="left")
@@ -1372,6 +1387,7 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
 
 
 
