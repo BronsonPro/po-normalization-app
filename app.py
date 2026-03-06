@@ -511,7 +511,6 @@ def read_normalized_po_table(excel_path):
 
     df["__ean_num"] = pd.to_numeric(df["EAN"], errors="coerce")
 
-
     qty_col = None
     for c in df.columns:
         if "qty" in str(c).lower() or "quantity" in str(c).lower():
@@ -529,12 +528,19 @@ def read_normalized_po_table(excel_path):
     for c in numeric_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    df = df[
-        (df["__ean_num"].notna()) &
-        ((df[qty_col] > 0) if qty_col else True) &
-        ~((df[numeric_cols].sum(axis=1)) == 0)
-    ].copy()
-
+    # For Scootsy, skip EAN validation (they use Item Code instead)
+    if party == "Scootsy":
+        df = df[
+            ((df[qty_col] > 0) if qty_col else True) &
+            ~((df[numeric_cols].sum(axis=1)) == 0)
+        ].copy()
+    else:
+        df = df[
+            (df["__ean_num"].notna()) &
+            ((df[qty_col] > 0) if qty_col else True) &
+            ~((df[numeric_cols].sum(axis=1)) == 0)
+        ].copy()
+        
     df.drop(columns="__ean_num", inplace=True)
     if "EAN" in df.columns:
         df = df.drop_duplicates(subset=["EAN"], keep="first")
@@ -1360,6 +1366,7 @@ if 'final_path' in st.session_state:
         else:
 
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
 
 
 
