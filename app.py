@@ -819,7 +819,28 @@ if po_df is not None and master_df is not None:
                 # Drop empty EAN from PO, then merge on Item Code
                 if "EAN" in po.columns:
                     po = po.drop(columns=["EAN"])
+                
+                # DEBUG - Check Item Codes before merge
+                st.write("🔍 Scootsy Merge Debug:")
+                st.write(f"PO Item Codes: {sorted(po['Item Code'].tolist())}")
+                st.write(f"Master has {len(master)} items")
+                st.write(f"Master Item Codes (sample): {sorted(master['Item Code'].head(20).tolist())}")
+                
+                # Check if PO Item Codes exist in Master
+                po_codes = set(po['Item Code'].tolist())
+                master_codes = set(master['Item Code'].tolist())
+                matching = po_codes & master_codes
+                missing = po_codes - master_codes
+                
+                st.write(f"✅ Matching Item Codes: {sorted(matching)}")
+                if missing:
+                    st.write(f"❌ PO Item Codes NOT in Master: {sorted(missing)}")
+                
                 upd = po.merge(master[["Item Code", "EAN", "Product Name"]], on="Item Code", how="left")
+                
+                st.write(f"After merge: {len(upd)} rows")
+                st.write(f"EAN values: {upd['EAN'].tolist()}")
+                st.dataframe(upd[["Item Code", "EAN", "Product Name"]])
             else:
                 # All other parties: Standard EAN merge
                 upd = po.merge(
