@@ -11,10 +11,6 @@ from email.mime.base import MIMEBase
 from email import encoders
 from email.mime.text import MIMEText
 
-# DEBUG: Disable auto-rerun to see debug messages
-if 'debug_mode' not in st.session_state:
-    st.session_state['debug_mode'] = True
-
 # ================== BASE DIR ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -37,7 +33,6 @@ parser_files = {
     "Myntra": "parsers/myntra.py",
     "Health & Glow": "parsers/healthandglow.py",
     "Slikk": "parsers/slikk.py"
-
 }
 
 parser_path = os.path.join(BASE_DIR, parser_files.get(party, ""))
@@ -143,15 +138,6 @@ def send_email_with_attachment(file_path, po_number, party_name):
     except:
         smtp_port = 587
     
-    # DEBUG - Print configuration
-    print("\n===== EMAIL DEBUG =====")
-    print(f"Sender: {sender_email}")
-    print(f"Recipient: {recipient_email}")
-    print(f"SMTP Server: {smtp_server}")
-    print(f"SMTP Port: {smtp_port}")
-    print(f"Password present: {sender_password is not None and len(str(sender_password)) > 0}")
-    print("=====================\n")
-    
     if not all([sender_email, sender_password, recipient_email]):
         missing = []
         if not sender_email:
@@ -163,7 +149,6 @@ def send_email_with_attachment(file_path, po_number, party_name):
         return False, f"Email configuration incomplete. Missing: {', '.join(missing)}"
     
     try:
-        print("Creating email message...")
         # Create message
         msg = MIMEMultipart()
         msg['From'] = sender_email
@@ -187,7 +172,6 @@ PO Automation"""
         msg.attach(MIMEText(body, 'plain'))
         
         # Attach file
-        print(f"Attaching file: {file_path}")
         filename = os.path.basename(file_path)
         
         with open(file_path, 'rb') as attachment:
@@ -199,39 +183,23 @@ PO Automation"""
         msg.attach(part)
         
         # Send email
-        print(f"Connecting to {smtp_server}:{smtp_port}...")
         server = smtplib.SMTP(smtp_server, smtp_port)
-        
-        print("Starting TLS encryption...")
         server.starttls()
-        
-        print("Logging in...")
         server.login(sender_email, sender_password)
-        
-        print("Sending email...")
         text = msg.as_string()
         server.sendmail(sender_email, recipient_email, text)
-        
-        print("Closing connection...")
         server.quit()
         
-        print("✅ Email sent successfully!")
         return True, f"Email sent successfully to {recipient_email}!"
     
     except smtplib.SMTPAuthenticationError as e:
-        error_msg = f"Authentication failed. Check your email/password. Error: {str(e)}"
-        print(f"❌ {error_msg}")
-        return False, error_msg
+        return False, f"Authentication failed. Check your email/password. Error: {str(e)}"
     
     except smtplib.SMTPException as e:
-        error_msg = f"SMTP error occurred: {str(e)}"
-        print(f"❌ {error_msg}")
-        return False, error_msg
+        return False, f"SMTP error occurred: {str(e)}"
     
     except Exception as e:
-        error_msg = f"Email failed: {str(e)}"
-        print(f"❌ {error_msg}")
-        return False, error_msg
+        return False, f"Email failed: {str(e)}"
 
 
 # ================== DJANGO UPLOAD ==================
@@ -249,18 +217,6 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
         if 'EAN' in df.columns:
             df['EAN'] = df['EAN'].astype(str).str.strip().str.replace('.0', '', regex=False)
             df = df[~df['EAN'].isin(['', 'nan', 'NaN', 'None'])]
-
-        print("\n===== UPLOAD DEBUG =====")
-        print(f"Columns: {df.columns.tolist()}")
-        print(f"Total rows: {len(df)}")
-        print(f"EAN values: {df['EAN'].tolist()}")
-        print("========================\n")
-
-        # DEBUG - print all values
-        print("\n===== VALUES DEBUG =====")
-        for _, row in df.iterrows():
-            print(f"EAN: {row.get('EAN')} | MRP: {row.get('MRP')} | Base Rate: {row.get('Base Rate')} | GST %: {row.get('GST %')} | Total: {row.get('Total')}")
-        print("========================\n")
 
         # Find EAN and Quantity columns
         ean_col = None
@@ -289,9 +245,7 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
             date_str = str(date_str).strip()
             if not date_str or date_str == "nan":
                 return fallback
-            # Strip time portion if present (e.g. "Dec. 25, 2025, 11:59 a.m." → "Dec. 25, 2025")
             date_str = re.sub(r',?\s+\d{1,2}:\d{2}.*$', '', date_str).strip()
-            # Remove trailing dots from month abbreviations (Dec. → Dec)
             date_str = re.sub(r'([A-Za-z])\.', r'\1', date_str).strip()
             for fmt in ["%d/%b/%Y", "%d-%m-%Y", "%Y-%m-%d", "%d/%m/%Y",
                         "%m/%d/%Y", "%d.%m.%Y", "%b %d, %Y", "%B %d, %Y",
@@ -378,14 +332,10 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
                     "hsn_code": hsn_val
                 }
                 payload.append(item)
-                print(f"Added item: {item}")
 
             except Exception as e:
-                print(f"Skipping row due to error: {e}")
                 skipped += 1
                 continue
-
-        print(f"\nItems to upload: {len(payload)}, Skipped: {skipped}")
 
         if not payload:
             return False, f"No valid items to upload. {skipped} rows skipped."
@@ -410,7 +360,6 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
         
         if not django_token:
             return False, "Django token not found. Add Django_Token to secrets or Email_Config.xlsx"
-        print(f"\nSending to API... First item: {payload[0]}")
 
         response = requests.post(
             "http://16.16.170.252/packingorder/purchase-orders/import/",
@@ -422,9 +371,6 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
             timeout=30
         )
 
-        print(f"Response status: {response.status_code}")
-        print(f"Response body: {response.text[:500]}")
-
         if response.status_code == 201:
             return True, f"✅ Successfully uploaded {len(payload)} items to mobile app!"
         elif response.status_code == 207:
@@ -434,12 +380,12 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
 
     except requests.exceptions.ConnectionError:
         return False, "Connection failed. Check if Django server is running."
-
     except requests.exceptions.Timeout:
         return False, "Request timed out."
-
     except Exception as e:
         return False, f"Upload failed: {str(e)}"
+
+
 # ================== RACK MASTER ==================
 RACK_FILE_PATH = os.path.join(BASE_DIR, "Rack number.xlsx")
 
@@ -451,13 +397,10 @@ def load_rack_master():
     rack.columns = rack.columns.astype(str).str.strip()
 
     rename = {}
-
     for c in rack.columns:
         cl = str(c).lower()
-
         if "ean" in cl:
             rename[c] = "EAN"
-
         if "rack" in cl:
             rename[c] = "Rack Number"
 
@@ -476,15 +419,14 @@ def load_rack_master():
 # ================== TITLE ==================
 st.title("📄 PO Normalization & Validation App")
 
-# ================== UTIL ==================
 
+# ================== UTIL ==================
 def read_normalized_po_table(excel_path):
     raw = pd.read_excel(excel_path, header=None)
 
     header_row = None
     for i in range(len(raw)):
         row = raw.iloc[i].astype(str).str.lower().tolist()
-        # Check if any cell contains "ean" (handles "ean", "ean/upc code", etc.)
         if any("ean" in str(cell) for cell in row):
             header_row = i
             break
@@ -495,23 +437,21 @@ def read_normalized_po_table(excel_path):
     df = pd.read_excel(excel_path, header=header_row)
     df.columns = df.columns.astype(str).str.strip()
 
-    # -------- STOP AT TOTAL ROW (Nykaa Fix) --------
+    # Stop at total row
     stop_words = ["total amount", "grand total", "total tax"]
-
     for i in range(len(df)):
         row_text = " ".join(df.iloc[i].astype(str).str.lower().tolist())
         if any(word in row_text for word in stop_words):
             df = df.iloc[:i]
             break
 
-    # Rename EAN column variations to standard "EAN"
+    # Rename EAN column variations
     for c in df.columns:
         if "ean" in c.lower() and c != "EAN":
             df = df.rename(columns={c: "EAN"})
             break
 
-    # ---------- REMOVE DC / LOCATION ROWS (STRONG FILTER) ----------
-
+    # Remove DC / LOCATION rows
     df["__ean_num"] = pd.to_numeric(df["EAN"], errors="coerce")
 
     qty_col = None
@@ -531,19 +471,16 @@ def read_normalized_po_table(excel_path):
     for c in numeric_cols:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-    # For Scootsy, skip EAN validation (they use Item Code instead)
-    # For Scootsy, skip EAN validation (they use Item Code instead)
+    # SCOOTSY FIX #1: Skip EAN validation for Scootsy (they use Item Code)
     if party == "Scootsy":
-        # Only check quantity > 0, don't check numeric columns (might be populated later from master)
         if qty_col:
             df = df[df[qty_col] > 0].copy()
-        # else: keep all rows if no qty column found
     else:
         df = df[
             (df["__ean_num"].notna()) &
             ((df[qty_col] > 0) if qty_col else True) &
             ~((df[numeric_cols].sum(axis=1)) == 0)
-        ].copy()        
+        ].copy()
     
     df.drop(columns="__ean_num", inplace=True)
     if "EAN" in df.columns:
@@ -569,7 +506,6 @@ po_df = None
 raw_po = None
 table_header_row = None
 converted_po_path = None
-ext = None
 
 if po_file:
     st.success(f"Loaded: {po_file.name}")
@@ -587,14 +523,11 @@ if po_file:
             f.write(po_file.read())
 
         convert_pdf_to_excel(input_path, converted_po_path)
-
         po_df, raw_po, table_header_row = read_normalized_po_table(converted_po_path)
-
         st.download_button("⬇ Download Converted PO", open(converted_po_path, "rb"), "PO_Converted.xlsx")
 
     else:
         if convert_pdf_to_excel is not None:
-            # Run through parser to normalize (e.g. BigBasket Excel PO)
             input_path = os.path.join(tempfile.gettempdir(), po_file.name)
             converted_po_path = os.path.join(tempfile.gettempdir(), "po_converted.xlsx")
             with open(input_path, "wb") as f:
@@ -604,7 +537,6 @@ if po_file:
             converted_po_path = po_file
 
         po_df, raw_po, table_header_row = read_normalized_po_table(converted_po_path)
-
         st.download_button("⬇ Download Converted PO", open(converted_po_path, "rb"), "PO_Converted.xlsx")
 
 
@@ -621,34 +553,33 @@ if master_file:
 
 # ================== STEP 3 ==================
 st.header("Step 3: Validate")
+
 # Show persistent success message if validation passed
 if st.session_state.get('validation_success', False):
     st.success("✅ No mismatches found. Updating Product Name & HSN Code from Master.")
 
 if po_df is not None and master_df is not None:
-
     if st.button("▶ Run Validation"):
-
         po = po_df.copy()
         master = master_df.copy()
         rack_master = load_rack_master()
         party_code_master = load_party_code_master()
 
-
-        # ---------------- SMART RENAME ----------------
+        # SMART RENAME FUNCTION
         def normalize(df, is_master=False):
             rename = {}
-
             for c in df.columns:
                 cl = str(c).strip().lower()
 
-                if "ean" in cl or "upc" in cl or "brand sku code" in cl:
+                # SCOOTSY FIX #2: Handle Item Code FIRST (before EAN)
+                if "item code" in cl or "item_code" in cl:
+                    rename[c] = "Item Code"
+                elif "ean" in cl or "upc" in cl or "brand sku code" in cl:
                     rename[c] = "EAN"
                 elif "mrp" in cl:
                     rename[c] = "MRP"
                 elif "gst" in cl or ("tax" in cl and "rate" in cl):
                     if "landing" not in cl and "incl" not in cl and "excl" not in cl and "taxable" not in cl:
-                        # Skip BigBasket PO - it has multiple GST columns, handled separately below
                         if not (party == "BigBasket" and not is_master):
                             rename[c] = "GST %"
                 elif "hsn" in cl:
@@ -663,6 +594,7 @@ if po_df is not None and master_df is not None:
                 ):
                     rename[c] = "Product Name"
 
+                # Party-specific renames
                 if party == "Zepto":
                     if not is_master and ("base" in cl or "unit" in cl):
                         rename[c] = "Base Rate"
@@ -679,9 +611,8 @@ if po_df is not None and master_df is not None:
                     if is_master and ("incl" in cl and "gst" in cl):
                         rename[c] = "Base Rate"
 
-                
                 if party == "TataCliq":
-                     if is_master and "taxable" in cl and "amt" in cl:
+                    if is_master and "taxable" in cl and "amt" in cl:
                         rename[c] = "Base Rate"
 
                 if party == "Scootsy":
@@ -693,7 +624,6 @@ if po_df is not None and master_df is not None:
                         rename[c] = "Base Rate"
                     if is_master and "new supply rate" in cl:
                         rename[c] = "Base Rate"
-                    # BigBasket has SGST%, CGST%, IGST%, GST% - only map exact "gst%" to GST %
                     if not is_master and cl == "gst%":
                         rename[c] = "GST %"
                     if is_master and "barcode" in cl:
@@ -716,6 +646,7 @@ if po_df is not None and master_df is not None:
                         rename[c] = "HSN Code"
                     if is_master and "tax rate" in cl:
                         rename[c] = "GST %"
+
                 if party == "Myntra":
                     if is_master and "taxable cost" in cl:
                         rename[c] = "Base Rate"
@@ -751,37 +682,24 @@ if po_df is not None and master_df is not None:
         po = normalize(po, is_master=False)
         master = normalize(master, is_master=True)
 
-        # DEBUG - After normalize
-        st.write("🔍 DEBUG - After normalize():")
-        st.write(f"PO rows: {len(po)}")
-        st.write(f"PO columns: {po.columns.tolist()}")
-        if "Item Code" in po.columns:
-            st.write(f"PO Item Codes: {po['Item Code'].tolist()}")
-        st.dataframe(po)
-
+        # SCOOTSY FIX #3: Deduplicate on Item Code for Scootsy, EAN for others
+        if party == "Scootsy":
+            if "Item Code" in po.columns:
+                po = po.drop_duplicates(subset=["Item Code"], keep="first")
+        else:
+            if "EAN" in po.columns:
+                po = po.drop_duplicates(subset=["EAN"], keep="first")
         
-        if "EAN" in po.columns:
-            po = po.drop_duplicates(subset=["EAN"], keep="first")
         master = master.sort_values("EAN").drop_duplicates(subset=["EAN"], keep="first")
 
-        # DEBUG - After deduplication
-        st.write("🔍 DEBUG - After drop_duplicates():")
-        st.write(f"PO rows: {len(po)}")
-        st.dataframe(po)
-
+        # Define required columns per party
         if party == "Nykaa":
             po_req = ["EAN", "MRP", "GST %"]
             master_req = ["EAN", "MRP", "GST %", "Product Name", "HSN Code"]
         elif party == "TataCliq":
-            # TataCliq doesn't have MRP in PO
             po_req = ["EAN", "Base Rate", "GST %"]
             master_req = ["EAN", "MRP", "Base Rate", "GST %", "Product Name", "HSN Code"]
-        elif party == "Scootsy":
-            # Scootsy doesn't have HSN Code in master
-            po_req = ["EAN", "MRP", "Base Rate", "GST %"]
-            master_req = ["EAN", "MRP", "Base Rate", "GST %", "Product Name"]
         elif party == "BigBasket":
-            # BigBasket PO has all fields
             po_req = ["EAN", "MRP", "Base Rate", "GST %"]
             master_req = ["EAN", "MRP", "Base Rate", "GST %", "Product Name", "HSN Code"]
         elif party == "Manash":
@@ -806,6 +724,7 @@ if po_df is not None and master_df is not None:
             po_req = ["EAN", "MRP", "Base Rate", "GST %"]
             master_req = ["EAN", "MRP", "Base Rate", "GST %", "Product Name", "HSN Code"]
 
+        # Check required columns
         for c in po_req:
             if c not in po.columns:
                 st.error(f"PO missing column: {c}")
@@ -816,65 +735,52 @@ if po_df is not None and master_df is not None:
                 st.error(f"Master missing column: {c}")
                 st.stop()
 
+        # Validate numeric columns
         if party == "Scootsy":
-            st.write("🔍 PRE-VALIDATION DEBUG:")
-            st.write("- Total rows in po_df:", len(po))
-            st.write("- Item Codes before validation:", po["Item Code"].tolist() if "Item Code" in po.columns else "No Item Code column")
-            
-            # Scootsy: Validate Item Code
             po["Item Code"] = pd.to_numeric(po["Item Code"], errors="coerce")
-                    # DEBUG - After to_numeric
-            st.write("🔍 DEBUG - After to_numeric(Item Code):")
-            st.write(f"Rows with valid Item Code: {po['Item Code'].notna().sum()}")
-            st.write(f"Item Codes: {po['Item Code'].tolist()}")
-            
             po = po.dropna(subset=["Item Code"])
-                     # DEBUG - After dropna
-            st.write("🔍 DEBUG - After dropna(Item Code):")
-            st.write(f"PO rows: {len(po)}")
-            st.dataframe(po)
             po["Item Code"] = po["Item Code"].astype("int64")
-            
+
             master["Item Code"] = pd.to_numeric(master["Item Code"], errors="coerce")
             master = master.dropna(subset=["Item Code"])
             master["Item Code"] = master["Item Code"].astype("int64")
-            
+
             master["EAN"] = pd.to_numeric(master["EAN"], errors="coerce")
             master = master.dropna(subset=["EAN"])
             master["EAN"] = master["EAN"].astype("int64")
         else:
-            # All other parties: Validate EAN
             po["EAN"] = pd.to_numeric(po["EAN"], errors="coerce")
             master["EAN"] = pd.to_numeric(master["EAN"], errors="coerce")
-
             po = po.dropna(subset=["EAN"])
             master = master.dropna(subset=["EAN"])
-
             po["EAN"] = po["EAN"].astype("int64")
             master["EAN"] = master["EAN"].astype("int64")
 
         for c in po_req:
-            if c != "EAN":
+            if c not in ["EAN", "Item Code"]:
                 po[c] = pd.to_numeric(po[c], errors="coerce").fillna(0)
 
         for c in master_req:
-            if c not in ["EAN", "Product Name", "HSN Code"]:
+            if c not in ["EAN", "Item Code", "Product Name", "HSN Code"]:
                 master[c] = pd.to_numeric(master[c], errors="coerce").fillna(0)
 
         master["GST %"] = master["GST %"].apply(lambda x: x * 100 if x <= 1 else x)
-
         po["GST %"] = po["GST %"].round(2)
         master["GST %"] = master["GST %"].round(2)
 
-        merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
+        # Validation merge
+        if party == "Scootsy":
+            merged = po.merge(master, on="Item Code", how="left", suffixes=("_PO", "_MASTER"))
+        else:
+            merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
+
         for col in merged.select_dtypes(include=['object']).columns:
             merged[col] = merged[col].astype(str)
 
-
+        # Check for mismatches
         reasons = []
         for _, r in merged.iterrows():
             issue = []
-            # Skip MRP validation for TataCliq (they don't have MRP in PO)
             if party != "TataCliq":
                 if abs(r["MRP_PO"] - r["MRP_MASTER"]) > 0.01:
                     issue.append("MRP Mismatch")
@@ -889,15 +795,12 @@ if po_df is not None and master_df is not None:
         mismatch = merged[merged["Reason"] != ""]
 
         if not mismatch.empty:
-            
             if party == "Nykaa":
                 report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
             elif party == "TataCliq":
-                # TataCliq: Show only Base Rate and GST % (no MRP in PO)
                 report = mismatch[["EAN", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
             else:
                 report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
-
 
             report = report.round(2)
             path = os.path.join(tempfile.gettempdir(), "Mismatch_Report.xlsx")
@@ -911,49 +814,35 @@ if po_df is not None and master_df is not None:
             st.session_state['validation_success'] = True
             st.success("✅ No mismatches found. Updating Product Name & HSN Code from Master.")
 
+            # SCOOTSY FIX #4: Proper merge for Scootsy
             if party == "Scootsy":
-                # Scootsy: Merge on Item Code to get EAN from master
-                # First, drop EAN from PO if it exists (it's empty for Scootsy)
+                # Drop empty EAN from PO, then merge on Item Code
                 if "EAN" in po.columns:
-                    po_for_merge = po.drop(columns=["EAN"])
-                else:
-                    po_for_merge = po.copy()
-                
-                # Merge to get EAN and Product Name from master
-                upd = po_for_merge.merge(
-                    master[["Item Code", "EAN", "Product Name"]], 
-                    on="Item Code", 
-                    how="left"
+                    po = po.drop(columns=["EAN"])
+                upd = po.merge(master[["Item Code", "EAN", "Product Name"]], on="Item Code", how="left")
+            else:
+                # All other parties: Standard EAN merge
+                upd = po.merge(
+                    master[["EAN", "Product Name", "HSN Code"]],
+                    on="EAN",
+                    how="left",
+                    suffixes=("_PO", "_MASTER")
                 )
 
-                st.session_state['scootsy_debug'] = {
-                    'rows_after_merge': len(upd),
-                    'ean_null_count': upd["EAN"].isna().sum(),
-                    'po_item_codes': po_for_merge["Item Code"].tolist(),
-                    'master_item_codes': master["Item Code"].head(20).tolist(),
-                    'ean_values': upd["EAN"].tolist(),
-                    'upd_sample': upd.copy(),
-                    'master_sample': master[["Item Code", "EAN", "Product Name"]].head(10).copy()
-                }
-                
-            # ---------- ADD RACK NUMBER ----------
+            # Add rack number
             if rack_master is not None:
                 upd = upd.merge(rack_master, on="EAN", how="left")
             else:
                 upd["Rack Number"] = ""
 
-            # Move Rack Number to last column
             if "Rack Number" in upd.columns:
                 cols = [c for c in upd.columns if c != "Rack Number"] + ["Rack Number"]
                 upd = upd[cols]
 
-            # ---------- TATACLIQ: POPULATE MRP FROM MASTER ----------
+            # TataCliq: Populate MRP from master
             if party == "TataCliq":
-                # TataCliq PO doesn't have MRP, get it from master
                 if "MRP" in upd.columns and "EAN" in upd.columns:
-                    # Create MRP lookup from master
                     mrp_lookup = master.set_index("EAN")["MRP"].to_dict()
-                    # Populate MRP for each row
                     upd["MRP"] = upd["EAN"].map(mrp_lookup).fillna(0)
 
             if "Product Name_MASTER" in upd.columns:
@@ -964,16 +853,12 @@ if po_df is not None and master_df is not None:
 
             upd.drop(columns=[c for c in upd.columns if c.endswith("_PO") or c.endswith("_MASTER")], inplace=True)
 
-            # ---------- FORCE EAN AS STRING BEFORE WRITING EXCEL ----------
+            # SCOOTSY FIX #5: Convert EAN properly for Scootsy (avoid scientific notation)
             if "EAN" in upd.columns:
                 if party == "Scootsy":
-                    # Scootsy: Convert from numeric to string properly (avoid scientific notation)
                     upd["EAN"] = upd["EAN"].apply(lambda x: f"{int(x)}" if pd.notna(x) and x != "" and x != 0 else "")
                 else:
-                    # Other parties: Standard conversion
                     upd["EAN"] = upd["EAN"].astype(str).str.replace(".0","", regex=False)
-
-
 
             final_raw = raw_po.copy()
             start_row = table_header_row + 1
@@ -982,19 +867,13 @@ if po_df is not None and master_df is not None:
 
             header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
 
-            # ---------- ENSURE RACK COLUMN EXISTS IN TEMPLATE ----------
+            # Ensure Rack column exists
             if "Rack Number" not in header_values:
-
-                # create new blank column first
                 final_raw["Rack Number"] = ""
-
-                # write header name at header row
                 final_raw.at[table_header_row, "Rack Number"] = "Rack Number"
 
-            # rebuild mapping after column creation
             header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
             col_index_map = {h: idx for idx, h in enumerate(header_values)}
-
 
             for i in range(len(upd)):
                 for col in upd.columns:
@@ -1004,34 +883,15 @@ if po_df is not None and master_df is not None:
                     val = upd.at[i, col]
                     final_raw.iat[start_row + i, j] = format_2_dec(val) if col in money_cols else val
 
-            # ---------- SCOOTSY: POPULATE EAN FROM ITEM CODE ----------
-            if party == "Scootsy" and "Item Code" in upd.columns and "EAN" in col_index_map and "Item Code" in col_index_map:
-                # Create lookup from master: Item Code -> EAN
-                master_lookup = master.set_index("Item Code")["EAN"].to_dict()
-                
-                ean_col_idx = col_index_map["EAN"]
-                item_code_col_idx = col_index_map["Item Code"]
-                
-                # For each row, lookup EAN using Item Code
-                for i in range(len(upd)):
-                    item_code = upd.at[i, "Item Code"]
-                    if pd.notna(item_code):
-                        item_code_int = int(item_code)
-                        ean = master_lookup.get(item_code_int, "")
-                        if ean:
-                            final_raw.iat[start_row + i, ean_col_idx] = int(ean)
-
-            # ---------- SCOOTSY: REMOVE ITEM CODE COLUMN ----------
+            # SCOOTSY FIX #6: Remove Item Code column from final sheet
             if party == "Scootsy":
-                # Find and remove Item Code column from final_raw
                 header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
                 if "Item Code" in header_values:
                     item_code_idx = header_values.index("Item Code")
                     final_raw.drop(final_raw.columns[item_code_idx], axis=1, inplace=True)
 
-            # ---------- GET PO NUMBER FROM HEADER ----------
+            # Get PO number
             po_number = "PO"
-
             for i in range(table_header_row):
                 row = final_raw.iloc[i].astype(str).str.lower().tolist()
                 if "po no" in row or "po number" in row:
@@ -1043,39 +903,31 @@ if po_df is not None and master_df is not None:
 
             safe_party = party.replace(" ", "").replace("/", "")
             safe_po = po_number.replace("/", "_").replace("\\", "_").replace(" ", "")
-
             filename = f"{safe_party}_{safe_po}.xlsx"
             final_path = os.path.join(tempfile.gettempdir(), filename)
 
-            
             final_raw.to_excel(final_path, index=False, header=False)
 
             from openpyxl import load_workbook
-            from openpyxl.styles import Alignment
+            from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
             from math import ceil
 
             wb = load_workbook(final_path)
             ws = wb.active
 
-            # ---------- ADD PARTY CODE ROW ----------
-            print("✅ ENTERED FINAL EXCEL FORMATTING BLOCK")
-
+            # Add party code
             party_code_value = ""
-
             if party_code_master is not None:
-
                 try:
                     party_name_sheet = ""
                     shipping_pin = ""
 
-                    # Read directly from FINAL EXCEL (ws)
                     for row in ws.iter_rows(min_row=1, max_row=table_header_row):
                         label = str(row[0].value).strip().lower() if row[0].value else ""
                         
                         if label == "party name":
                             party_name_sheet = str(row[1].value).strip().lower() if row[1].value else ""
                         
-                        # Look for EXACT match "shipping address"
                         if label == "shipping address":
                             addr = str(row[1].value) if row[1].value else ""
                             pin_match = re.findall(r"\d{6}", addr)
@@ -1087,40 +939,29 @@ if po_df is not None and master_df is not None:
                                 shipping_pin = ""
 
                     if party_name_sheet and shipping_pin:
-
-                        # Normalize PO party name (remove special characters)
                         party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
-
-                        # Normalize master party names
                         party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
                             lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
                         )
 
-                        # Match by pincode AND party name
-                        # First try exact match
                         match = party_code_master[
                             (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
                             (party_code_master["_clean_name"] == party_name_clean)
                         ]
                         
-                        # If no exact match, try contains (master name contains PO name)
                         if match.empty:
                             match = party_code_master[
                                 (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
                                 (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
                             ]
 
-
                         if not match.empty:
                             party_code_value = str(match.iloc[0]["Party Code"])
 
                 except Exception as e:
-                    print(f"❌ Error in party code matching: {e}")
                     party_code_value = ""
 
-            # Insert Party Code row below Party Name row safely
             insert_row = None
-
             for r in range(1, table_header_row + 2):
                 val = ws.cell(row=r, column=1).value
                 if val and str(val).strip().lower() == "party name":
@@ -1134,27 +975,20 @@ if po_df is not None and master_df is not None:
             ws.cell(row=insert_row, column=1).value = "Party Code"
             ws.cell(row=insert_row, column=2).value = party_code_value
 
-            # ---------- SHIPPING ADDRESS → KEEP ONLY PINCODE ----------
+            # Shipping address → keep only pincode
             for row in ws.iter_rows(min_row=1, max_row=table_header_row):
-
                 field_cell = row[0]
-
                 if field_cell.value and str(field_cell.value).strip().lower() == "shipping address":
-
                     val_cell = row[1]
-
                     if val_cell.value:
                         addr_text = str(val_cell.value)
-
                         pin_match = re.search(r"\b[1-9][0-9]{5}\b", addr_text)
-
                         if pin_match:
                             val_cell.value = pin_match.group(0)
                         else:
-                            val_cell.value = ""   # if no pincode found
+                            val_cell.value = ""
 
-
-            # 🔥 LOCK SUMMARY AS TEXT
+            # Lock summary as text
             for row in ws.iter_rows():
                 if row[0].value and str(row[0].value).strip().lower() in ["total base value", "total tax", "grand total"]:
                     row[1].value = str(row[1].value)
@@ -1164,9 +998,8 @@ if po_df is not None and master_df is not None:
                 for cell in row:
                     cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
 
-            # ---------- FIX EAN COLUMN (NO SCIENTIFIC NOTATION) ----------
+            # Fix EAN column
             ean_col_idx = None
-
             for col in ws.iter_cols(min_row=table_header_row + 1, max_row=table_header_row + 1):
                 if str(col[0].value).strip().lower() == "ean":
                     ean_col_idx = col[0].column
@@ -1174,43 +1007,27 @@ if po_df is not None and master_df is not None:
 
             if ean_col_idx:
                 start = table_header_row + 2
-                end = start + len(upd) - 1   # only product rows
+                end = start + len(upd) - 1
 
                 for r in range(start, end + 1):
                     cell = ws.cell(row=r, column=ean_col_idx)
-
                     if cell.value not in ("", None):
                         try:
-                            # Convert safely WITHOUT float
                             cell.value = str(cell.value).split(".")[0]
                         except:
                             pass
-
-                        # Force Excel TEXT format (prevents scientific notation)
                         cell.number_format = "@"
 
-
-            # ---------- FORCE COLUMN WIDTHS (FIT TO ONE PAGE) ----------
-            # Adjusted for A4 Landscape printing
-
+            # Force column widths
             fixed_widths = {
-                "A": 13,    # Sr #
-                "B": 18,   # EAN
-                "C": 36,   # Product Name (wraps)
-                "D": 12,   # HSN
-                "E": 9,    # Qty
-                "F": 9,    # MRP
-                "G": 11,   # Base Rate
-                "H": 7,    # GST %
-                "I": 12,   # Total
-                "J": 12,   # Rack Number
-
+                "A": 13, "B": 18, "C": 36, "D": 12, "E": 9,
+                "F": 9, "G": 11, "H": 7, "I": 12, "J": 12
             }
 
             for col_letter, width in fixed_widths.items():
                 ws.column_dimensions[col_letter].width = width
 
-            # ---------- AUTO ROW HEIGHT BASED ON WRAP ----------
+            # Auto row height
             for row in ws.iter_rows():
                 row_idx = row[0].row
                 max_lines = 1
@@ -1224,33 +1041,25 @@ if po_df is not None and master_df is not None:
 
                 ws.row_dimensions[row_idx].height = max(18, max_lines * 15)
             
-            # ---------- ADJUST SPECIFIC ROW HEIGHTS ----------
-            # Shipping address row - moderate height
+            # Adjust specific row heights
             for row in ws.iter_rows(min_row=1, max_row=8):
                 field_cell = row[0]
                 if field_cell.value and str(field_cell.value).strip().lower() == "shipping address":
                     r = field_cell.row
-                    ws.row_dimensions[r].height = 45  # Fixed moderate height (was dynamic +25)
+                    ws.row_dimensions[r].height = 45
             
-            # Row 10 (table header) - increase height for "Rack Number" visibility
             ws.row_dimensions[10].height = 30
 
-            # ---------- PRINT SETTINGS ----------
+            # Print settings
             ws.page_setup.paperSize = ws.PAPERSIZE_A4
             ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-
-            # No scaling — physical fit by column sizing
             ws.page_setup.scale = 100
-
-            # Margins
             ws.page_margins.left = 0.3
             ws.page_margins.right = 0.3
             ws.page_margins.top = 0.5
             ws.page_margins.bottom = 0.5
 
-            # ---------- ADD GRIDLINES (AFTER ALL DATA IS COMPLETE) ----------
-            from openpyxl.styles import Border, Side, Font, PatternFill
-            
+            # Add gridlines
             thin_border = Border(
                 left=Side(style='thin'),
                 right=Side(style='thin'),
@@ -1260,18 +1069,17 @@ if po_df is not None and master_df is not None:
             
             header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
             
-            # Get total number of columns
             num_cols = ws.max_column
             
-            # 1. Header fields (Rows 1-8, Columns A-B)
+            # Header fields (Rows 1-8, Columns A-B)
             for row in range(1, 9):
                 for col in range(1, 3):
                     cell = ws.cell(row=row, column=col)
                     cell.border = thin_border
-                    if col == 1:  # Column A - bold
+                    if col == 1:
                         cell.font = Font(bold=True)
             
-            # 2. Table header row (Row 10, all columns, gray fill, bold)
+            # Table header row (Row 10, all columns)
             for col in range(1, num_cols + 1):
                 cell = ws.cell(row=10, column=col)
                 cell.border = thin_border
@@ -1279,11 +1087,9 @@ if po_df is not None and master_df is not None:
                 cell.fill = header_fill
                 cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             
-            # 3. Table content (Row 11 onwards until empty row)
-            # Find last data row
+            # Table content (Row 11 onwards)
             last_data_row = 10
             for row_idx in range(11, ws.max_row + 1):
-                # Check if row has data
                 has_data = False
                 for col in range(1, min(5, num_cols + 1)):
                     if ws.cell(row=row_idx, column=col).value:
@@ -1292,35 +1098,33 @@ if po_df is not None and master_df is not None:
                 if has_data:
                     last_data_row = row_idx
                 else:
-                    break  # Hit empty row, stop
+                    break
             
-            # Apply borders to all data rows
             for row in range(11, last_data_row + 1):
                 for col in range(1, num_cols + 1):
                     cell = ws.cell(row=row, column=col)
                     cell.border = thin_border
             
-            # 4. Summary fields (3 rows, Columns A-B, starting 2 rows after last data)
+            # Summary fields (3 rows, Columns A-B)
             summary_start = last_data_row + 2
             for row in range(summary_start, summary_start + 3):
                 for col in range(1, 3):
                     cell = ws.cell(row=row, column=col)
                     cell.border = thin_border
-                    if col == 1:  # Column A - bold
+                    if col == 1:
                         cell.font = Font(bold=True)
 
             wb.save(final_path)
 
             st.success("✅ Final PO formatted and ready!")
 
-            
-            # Store in session state
             # Store in session state
             st.session_state['final_path'] = final_path
             st.session_state['final_name'] = os.path.basename(final_path)
             st.session_state['po_number'] = po_number
             st.session_state['party'] = party
             st.session_state['party_code_value'] = party_code_value
+
             # Merge MRP from master for platforms where PO has no MRP
             if "MRP_MASTER" in merged.columns:
                 upd["MRP"] = pd.to_numeric(merged["MRP_MASTER"], errors="coerce").fillna(
@@ -1328,7 +1132,7 @@ if po_df is not None and master_df is not None:
                 )
             st.session_state['upd_df'] = upd.copy()
             
-            # Extract PO Date and Expiry Date from raw PO
+            # Extract PO Date and Expiry Date
             po_date = ""
             po_expiry_date = ""
             for i in range(table_header_row):
@@ -1348,35 +1152,10 @@ if po_df is not None and master_df is not None:
             st.session_state['po_expiry_date'] = po_expiry_date
             st.rerun()
 
-
 else:
     st.info("Upload both PO and Master file to enable validation.")
 
-# DISPLAY SCOOTSY DEBUG (persists after rerun)
-if 'scootsy_debug' in st.session_state:
-    with st.expander("🔍 SCOOTSY DEBUG OUTPUT", expanded=True):
-        debug = st.session_state['scootsy_debug']
-        
-        st.write("### Merge Results:")
-        st.write("- Rows after merge:", debug['rows_after_merge'])
-        st.write("- EAN null count:", debug['ean_null_count'])
-        
-        st.write("### Item Codes:")
-        st.write("- PO Item Codes:", debug['po_item_codes'])
-        st.write("- Master Item Codes (first 20):", debug['master_item_codes'])
-        
-        st.write("### EAN Values:")
-        st.write("- EAN after merge:", debug['ean_values'])
-        
-        st.write("### Data Preview:")
-        st.dataframe(debug['upd_sample'])
-        
-        st.write("### Master Sample:")
-        st.dataframe(debug['master_sample'])
 
-
-# ================== DOWNLOAD & EMAIL SECTION ==================
-# This section is OUTSIDE the validation block so it persists across reruns
 # ================== DOWNLOAD & EMAIL SECTION ==================
 if 'final_path' in st.session_state:
     
@@ -1424,18 +1203,4 @@ if 'final_path' in st.session_state:
                     else:
                         st.error(upload_message)
         else:
-
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
-
-
-
-
-
-
-
-
-
-
-
-
-
