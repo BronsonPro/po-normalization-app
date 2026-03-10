@@ -473,8 +473,9 @@ def read_normalized_po_table(excel_path):
 
     # SCOOTSY FIX #1: Skip EAN validation for Scootsy (they use Item Code)
     if party == "Scootsy":
-        if qty_col:
-            df = df[df[qty_col] > 0].copy()
+        # For Scootsy, keep all rows - don't filter by quantity or numeric columns
+        # Values will be populated from master file later
+        pass
     else:
         df = df[
             (df["__ean_num"].notna()) &
@@ -483,8 +484,12 @@ def read_normalized_po_table(excel_path):
         ].copy()
     
     df.drop(columns="__ean_num", inplace=True)
-    if "EAN" in df.columns:
-        df = df.drop_duplicates(subset=["EAN"], keep="first")
+    
+    # Don't deduplicate Scootsy on EAN (it's empty) - will dedupe on Item Code later
+    if party != "Scootsy":
+        if "EAN" in df.columns:
+            df = df.drop_duplicates(subset=["EAN"], keep="first")
+    
     df.reset_index(drop=True, inplace=True)
 
     return df, raw, header_row
@@ -745,9 +750,10 @@ if po_df is not None and master_df is not None:
             master = master.dropna(subset=["Item Code"])
             master["Item Code"] = master["Item Code"].astype("int64")
 
+            # Convert EAN but don't filter by it - some master items may have missing EAN
             master["EAN"] = pd.to_numeric(master["EAN"], errors="coerce")
-            master = master.dropna(subset=["EAN"])
-            master["EAN"] = master["EAN"].astype("int64")
+            # Don't drop rows with missing EAN for Scootsy
+            master["EAN"] = master["EAN"].fillna(0).astype("int64")
         else:
             po["EAN"] = pd.to_numeric(po["EAN"], errors="coerce")
             master["EAN"] = pd.to_numeric(master["EAN"], errors="coerce")
@@ -820,27 +826,7 @@ if po_df is not None and master_df is not None:
                 if "EAN" in po.columns:
                     po = po.drop(columns=["EAN"])
                 
-                # DEBUG - Check Item Codes before merge
-                st.write("🔍 Scootsy Merge Debug:")
-                st.write(f"PO Item Codes: {sorted(po['Item Code'].tolist())}")
-                st.write(f"Master has {len(master)} items")
-                st.write(f"Master Item Codes (sample): {sorted(master['Item Code'].head(20).tolist())}")
-                
-                # Check if PO Item Codes exist in Master
-                po_codes = set(po['Item Code'].tolist())
-                master_codes = set(master['Item Code'].tolist())
-                matching = po_codes & master_codes
-                missing = po_codes - master_codes
-                
-                st.write(f"✅ Matching Item Codes: {sorted(matching)}")
-                if missing:
-                    st.write(f"❌ PO Item Codes NOT in Master: {sorted(missing)}")
-                
                 upd = po.merge(master[["Item Code", "EAN", "Product Name"]], on="Item Code", how="left")
-                
-                st.write(f"After merge: {len(upd)} rows")
-                st.write(f"EAN values: {upd['EAN'].tolist()}")
-                st.dataframe(upd[["Item Code", "EAN", "Product Name"]])
             else:
                 # All other parties: Standard EAN merge
                 upd = po.merge(
