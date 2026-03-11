@@ -145,8 +145,13 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         total
                     ])
     
-    # Add summary rows - extract from PDF if possible
-    summary_text = first_page_text
+    # Add summary rows - extract from PDF (check last page for multi-page POs)
+    # For multi-page POs, summary is usually on the last page
+    with pdfplumber.open(pdf_path) as pdf:
+        last_page_text = pdf.pages[-1].extract_text() or ""
+    
+    # Search last page first, then first page as fallback
+    summary_text = last_page_text if last_page_text else first_page_text
     
     total_amount = ""
     total_tax = ""
