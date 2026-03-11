@@ -116,7 +116,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     
                     # Extract data from correct columns with defensive length checks
                     # Column mapping from PDF:
-                    # 0=Sr, 1=Item Code, 2=Product, 3=HSN, 4=Qty, 5=MRP, 6=Base Cost, 7=Taxable Value, 13=IGST Rate, 14=IGST Amt, 18=Total
+                    # 0=Sr, 1=Item Code, 2=Product, 3=HSN, 4=Qty, 5=MRP, 6=Base Cost, 7=Taxable Value, 13=IGST Rate, 14=IGST Amt, 17=Total
                     
                     sr_no = first_cell
                     item_code = str(row[1] or "").strip() if len(row) > 1 else ""
@@ -126,7 +126,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     mrp = str(row[5] or "").strip() if len(row) > 5 else ""
                     base_rate = str(row[6] or "").strip() if len(row) > 6 else ""
                     gst_rate = str(row[13] or "").strip() if len(row) > 13 else ""  # IGST Rate column
-                    total = str(row[18] or "").strip() if len(row) > 18 else ""  # Total column (may not exist in some formats)
+                    total = str(row[17] or "").strip() if len(row) > 17 else ""  # Total column at index 17
                     
                     # Map Item Code to EAN if available from master
                     item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
@@ -157,16 +157,16 @@ def convert_pdf_to_excel(pdf_path, output_path):
     total_tax = ""
     grand_total = ""
     
-    # Extract summary values
-    amt_match = re.search(r'Total Amount.*?\(INR\)\s+([\d,.]+)', summary_text)
+    # Extract summary values - match actual format without extra parentheses
+    amt_match = re.search(r'Total Amount\s*\(INR\)\s+([\d,.]+)', summary_text)
     if amt_match:
         total_amount = amt_match.group(1)
     
-    tax_match = re.search(r'Total Tax.*?\(INR\)\s+([\d,.]+)', summary_text)
+    tax_match = re.search(r'Total Tax\s*\(INR\)\s+([\d,.]+)', summary_text)
     if tax_match:
         total_tax = tax_match.group(1)
     
-    grand_match = re.search(r'Grand Total.*?\(INR\)\s+([\d,.]+)', summary_text)
+    grand_match = re.search(r'Grand Total\s*\(INR\)\s+([\d,.]+)', summary_text)
     if grand_match:
         grand_total = grand_match.group(1)
     
