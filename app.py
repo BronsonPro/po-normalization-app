@@ -805,6 +805,8 @@ if po_df is not None and master_df is not None:
                 report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
             elif party == "TataCliq":
                 report = mismatch[["EAN", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
+            elif party == "Scootsy":
+                report = mismatch[["Item Code", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
             else:
                 report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
 
@@ -1211,3 +1213,4 @@ if 'final_path' in st.session_state:
                         st.error(upload_message)
         else:
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
