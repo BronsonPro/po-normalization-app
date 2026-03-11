@@ -143,13 +143,21 @@ def convert_pdf_to_excel(pdf_path, output_excel_path):
                 qty = int(float(num(col("quantity")) or 0))
                 mrp = num(col("mrp"))
                 base = num(col("base")) or num(col("price"))
+                
+                # ========== FIX: Handle both IGST (interstate) and CGST+SGST (intrastate) ==========
+                igst = num(col("igst"))
                 cgst = num(col("cgst"))
                 sgst = num(col("sgst"))
 
                 try:
-                    gst_pct = int(float(cgst or 0) + float(sgst or 0))
+                    # If IGST exists (interstate), use it; otherwise use CGST+SGST (intrastate)
+                    if igst:
+                        gst_pct = int(float(igst))
+                    else:
+                        gst_pct = int(float(cgst or 0) + float(sgst or 0))
                 except:
                     gst_pct = ""
+                # ========== END FIX ==========
 
                 name_parts = []
                 for i, h in enumerate(header):
