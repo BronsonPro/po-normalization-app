@@ -1,4 +1,4 @@
-﻿"""
+"""
 Scootsy Parser - EXPERT VERSION
 Extracts data exactly as it appears in the PDF
 """
@@ -114,19 +114,19 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     if not first_cell or not first_cell.isdigit():
                         continue
                     
-                    # Extract data from correct columns
+                    # Extract data from correct columns with defensive length checks
                     # Column mapping from PDF:
                     # 0=Sr, 1=Item Code, 2=Product, 3=HSN, 4=Qty, 5=MRP, 6=Base Cost, 7=Taxable Value, 13=IGST Rate, 14=IGST Amt, 18=Total
                     
                     sr_no = first_cell
-                    item_code = str(row[1] or "").strip()
-                    product_name = str(row[2] or "").strip().replace('\n', ' ')
-                    hsn = str(row[3] or "").strip()
-                    qty = str(row[4] or "").strip()
-                    mrp = str(row[5] or "").strip()
-                    base_rate = str(row[6] or "").strip()
-                    gst_rate = str(row[13] or "").strip()  # IGST Rate column
-                    total = str(row[18] or "").strip()
+                    item_code = str(row[1] or "").strip() if len(row) > 1 else ""
+                    product_name = str(row[2] or "").strip().replace('\n', ' ') if len(row) > 2 else ""
+                    hsn = str(row[3] or "").strip() if len(row) > 3 else ""
+                    qty = str(row[4] or "").strip() if len(row) > 4 else ""
+                    mrp = str(row[5] or "").strip() if len(row) > 5 else ""
+                    base_rate = str(row[6] or "").strip() if len(row) > 6 else ""
+                    gst_rate = str(row[13] or "").strip() if len(row) > 13 else ""  # IGST Rate column
+                    total = str(row[18] or "").strip() if len(row) > 18 else ""  # Total column (may not exist in some formats)
                     
                     # Map Item Code to EAN if available from master
                     item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
