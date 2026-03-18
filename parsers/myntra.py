@@ -80,86 +80,65 @@ def extract_po_header(pdf_path):
 # ------------------ LINE ITEMS EXTRACTION ------------------
 
 def extract_line_items(pdf_path):
-    all_text = ""
+    items = []
     
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
-            text = page.extract_text() or ""
-            all_text += " " + text
-
-    items = []
-    
-    # Split on BNPL pattern - products are on continuous line
-    # Split by 'BNPL' and process each chunk
-    chunks = all_text.split('BNPL')
-    
-    for chunk in chunks:
-        if not chunk.strip():
-            continue
+            # Extract tables instead of text
+            tables = page.extract_tables()
             
-        # Prepend 'BNPL' back
-        line = 'BNPL' + chunk
-        parts = line.strip().split()
-        
-        if len(parts) < 15:
-            continue
-            
-        try:
-            sku_code = parts[0]  # BNPL...
-            hsn = parts[1]  # 96032900
-            
-            # Find EAN - look for 8-digit number
-            ean = ""
-            ean_idx = 0
-            for j, p in enumerate(parts):
-                if p.isdigit() and len(p) == 8:
-                    ean = p
-                    ean_idx = j
-                    break
-            
-            if not ean:
+            if not tables:
                 continue
             
-            # Product name is between HSN and EAN
-            product_name = " ".join(parts[2:ean_idx]).strip()
-            
-            # Extract numeric values from the end
-            # Format: ...Qty MRP BaseRate1 BaseRate2 CGST% CGST_Amt SGST% SGST_Amt Total
-            try:
-                total = float(parts[-1])
-                sgst_amt = float(parts[-2])
-                sgst_pct = float(parts[-3])
-                cgst_amt = float(parts[-4])
-                cgst_pct = float(parts[-5])
-                base_rate2 = float(parts[-6])
-                base_rate1 = float(parts[-7])
-                mrp = float(parts[-8])
-                qty = int(float(parts[-9]))
-                
-                # GST % = CGST% + SGST%
-                gst_pct = cgst_pct + sgst_pct
-                
-                # Validate
-                if qty <= 0 or mrp <= 0 or total <= 0:
-                    continue
+            for table in tables:
+                for row in table:
+                    if not row or len(row) < 10:
+                        continue
                     
-            except (ValueError, IndexError):
-                continue
-            
-            items.append({
-                "Sr #": len(items) + 1,
-                "EAN": ean,
-                "Product Name": product_name,
-                "HSN Code": hsn,
-                "Quantity": qty,
-                "MRP": mrp,
-                "Base Rate": base_rate2,
-                "GST %": gst_pct,
-                "Total": total,
-            })
-            
-        except Exception as e:
-            continue
+                    # Check if first cell starts with BNPL (SKU code)
+                    first_cell = str(row[0] or "").strip()
+                    if not first_cell.startswith("BNPL"):
+                        continue
+                    
+                    try:
+                        # Column structure based on your sample:
+                        # 0=SKU, 1=HSN, 2=ProductName, 3=EAN(8-digit), 4=Another#, 5=Color, 
+                        # 6=Size, 7=StyleID, 8=Qty, 9=MRP, 10=Rate1, 11=Rate2, 
+                        # 12=CGST%, 13=CGST_Amt, 14=SGST%, 15=SGST_Amt, 16=Total
+                        
+                        sku_code = first_cell
+                        hsn = str(row[1] or "").strip()
+                        product_name = str(row[2] or "").strip()
+                        ean = str(row[3] or "").strip()
+                        
+                        # Get numeric values from end
+                        qty = int(float(str(row[8] or "0").strip()))
+                        mrp = float(str(row[9] or "0").strip())
+                        base_rate = float(str(row[11] or "0").strip())  # Use Rate2
+                        cgst_pct = float(str(row[12] or "0").strip())
+                        sgst_pct = float(str(row[14] or "0").strip())
+                        total = float(str(row[16] or "0").strip())
+                        
+                        gst_pct = cgst_pct + sgst_pct
+                        
+                        # Validate
+                        if qty <= 0 or mrp <= 0 or total <= 0 or not ean:
+                            continue
+                        
+                        items.append({
+                            "Sr #": len(items) + 1,
+                            "EAN": ean,
+                            "Product Name": product_name,
+                            "HSN Code": hsn,
+                            "Quantity": qty,
+                            "MRP": mrp,
+                            "Base Rate": base_rate,
+                            "GST %": gst_pct,
+                            "Total": total,
+                        })
+                        
+                    except (ValueError, IndexError) as e:
+                        continue
 
     return pd.DataFrame(items)
 
