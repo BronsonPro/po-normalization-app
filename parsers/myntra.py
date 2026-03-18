@@ -192,7 +192,7 @@ def extract_line_items_from_text(pdf_path):
             is_cgst_sgst = True
             debug_info.append("Defaulting to CGST+SGST format")
         
-        for line in lines:
+        for idx, line in enumerate(lines):
             if 'BNPL' not in line:
                 continue
             
@@ -217,7 +217,8 @@ def extract_line_items_from_text(pdf_path):
                 # HSN is right after SKU
                 hsn = parts[sku_idx + 1] if sku_idx + 1 < len(parts) else ""
                 
-                # Find EAN - look for 8-digit or longer number (could be 8, 11, or 13 digits)
+                # Find EAN - look for 8-digit or longer number
+                # EAN might be split across 2 lines
                 ean = ""
                 ean_idx = -1
                 for i in range(sku_idx + 2, len(parts)):
@@ -226,11 +227,51 @@ def extract_line_items_from_text(pdf_path):
                         ean_idx = i
                         break
                 
+                # If EAN is too short (8 digits) and next line exists, check if it continues
+                if ean and len(ean) <= 11 and idx + 1 < len(lines):
+                    next_line = lines[idx + 1].strip()
+                    if next_line:
+                        next_parts = next_line.split()
+                        # Check if first part of next line is a number that could be EAN continuation
+                        if next_parts and next_parts[0].isdigit() and len(next_parts[0]) <= 6:
+                            # Append to complete the EAN
+                            potential_ean = ean + next_parts[0]
+                            # Valid EAN is 13 or 14 digits
+                            if len(potential_ean) in [13, 14]:
+                                ean = potential_ean
+                                debug_info.append(f"Multi-line EAN detected: {parts[ean_idx]} + {next_parts[0]} = {ean}")
+                
                 if not ean:
                     continue
                 
-                # Product name is between HSN and EAN
-                product_name = " ".join(parts[sku_idx + 2:ean_idx]).strip()
+                # Product name is between HSN and EAN on current line
+                product_name_parts = parts[sku_idx + 2:ean_idx]
+                
+                # Check next line for continuation of product name (common in Myntra POs)
+                # Product name wraps to next line before hitting the EAN continuation or color/size
+                if idx + 1 < len(lines):
+                    next_line = lines[idx + 1].strip()
+                    if next_line and not next_line.startswith('BNPL'):
+                        next_parts = next_line.split()
+                        # Add words from next line until we hit numbers (EAN continuation, style ID, etc.)
+                        for p in next_parts:
+                            # Stop at: pure digits, or long digit strings (8+ chars)
+                            if p.isdigit():
+                                if len(p) <= 3:  # Could be part of EAN continuation (e.g. "785")
+                                    break
+                                elif len(p) >= 6:  # Definitely EAN continuation or Style ID
+                                    break
+                            # Stop at common non-product-name keywords
+                            if p.upper() in ['ONESIZE', 'PACK', 'BROWN', 'GOLDEN', 'MULTI', 'SILVER', 'BLACK', 'WHITE', 'RED', 'BLUE', 'GREEN']:
+                                break
+                            # Add if it's a word (not just numbers/symbols)
+                            if len(p) > 1 and any(c.isalpha() for c in p):
+                                product_name_parts.append(p)
+                            else:
+                                break  # Stop at first non-word
+                
+                product_name = " ".join(product_name_parts).strip()
+                debug_info.append(f"Product name captured: {product_name}")
                 
                 # Now intelligently find numeric columns from the end
                 # Total is always last
