@@ -138,19 +138,59 @@ def extract_line_items_from_text(pdf_path):
         
         lines = text.split('\n')
         
-        # Find header line to understand column order
+        # Find header line - check both text and look for tax keywords
         header_line = None
         for line in lines:
-            if 'SKU Code' in line and 'HSN' in line:
+            # Look for header containing tax-related keywords
+            if any(kw in line for kw in ['SKU', 'HSN', 'CGST', 'SGST', 'IGST']):
                 header_line = line
                 break
         
-        # Detect if IGST or CGST+SGST based on header
-        is_igst = 'IGST' in header_line if header_line else False
-        is_cgst_sgst = 'CGST' in header_line and 'SGST' in header_line if header_line else False
+        # Detect if IGST or CGST+SGST based on header keywords
+        is_igst = None
+        is_cgst_sgst = None
         
-        debug_info.append(f"Header line: {header_line[:100] if header_line else 'NOT FOUND'}")
-        debug_info.append(f"Detected IGST: {is_igst}, CGST+SGST: {is_cgst_sgst}")
+        if header_line:
+            # Check for CGST and SGST together (intrastate)
+            if 'CGST' in header_line and 'SGST' in header_line:
+                is_cgst_sgst = True
+                is_igst = False
+            # Check for IGST (interstate)
+            elif 'IGST' in header_line:
+                is_igst = True
+                is_cgst_sgst = False
+        
+        debug_info.append(f"Header line: {header_line[:150] if header_line else 'NOT FOUND'}")
+        debug_info.append(f"From header - IGST: {is_igst}, CGST+SGST: {is_cgst_sgst}")
+        
+        # If header detection failed, detect from first product line
+        if is_igst is None and is_cgst_sgst is None:
+            for line in lines:
+                if 'BNPL' in line:
+                    parts = line.strip().split()
+                    # CGST+SGST has duplicated percentages (9.00 appears twice)
+                    # Check if parts[-3] == parts[-5] (SGST% == CGST%)
+                    try:
+                        if len(parts) >= 10:
+                            val1 = float(parts[-3])
+                            val2 = float(parts[-5])
+                            if val1 == val2 and val1 < 50:  # Same percentage (likely CGST == SGST)
+                                is_cgst_sgst = True
+                                is_igst = False
+                                debug_info.append(f"Auto-detected CGST+SGST (found matching values: {val1} == {val2})")
+                            else:
+                                is_igst = True
+                                is_cgst_sgst = False
+                                debug_info.append(f"Auto-detected IGST (values don't match: {val1} != {val2})")
+                            break
+                    except:
+                        pass
+        
+        # Final fallback
+        if is_igst is None:
+            is_igst = False
+            is_cgst_sgst = True
+            debug_info.append("Defaulting to CGST+SGST format")
         
         for line in lines:
             if 'BNPL' not in line:
