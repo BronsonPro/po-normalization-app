@@ -194,17 +194,26 @@ def extract_line_items_from_text(pdf_path):
                 # Total is always last
                 total = float(parts[-1])
                 
+                # DEBUG
+                print(f"\nDEBUG Product: {sku_code}")
+                print(f"Total parts: {len(parts)}")
+                print(f"Header detected IGST: {is_igst}, CGST+SGST: {is_cgst_sgst}")
+                print(f"Last 10 parts: {parts[-10:]}")
+                
                 # Determine format and extract accordingly
                 if is_igst or (not is_cgst_sgst and len(parts) < sku_idx + 20):
                     # IGST format: ...Qty MRP Rate1 Rate2 IGST% IGST_Amt Total
+                    print("Using IGST format")
                     igst_amt = float(parts[-2])
                     gst_pct = float(parts[-3])
                     base_rate2 = float(parts[-4])
                     base_rate1 = float(parts[-5])
                     mrp = float(parts[-6])
                     qty = int(float(parts[-7]))
+                    print(f"Extracted: Qty={qty}, MRP={mrp}, Rate1={base_rate1}, Rate2={base_rate2}, GST%={gst_pct}, Total={total}")
                 else:
                     # CGST+SGST format: ...Qty MRP Rate1 Rate2 CGST% CGST_Amt SGST% SGST_Amt Total
+                    print("Using CGST+SGST format")
                     sgst_amt = float(parts[-2])
                     sgst_pct = float(parts[-3])
                     cgst_amt = float(parts[-4])
@@ -214,6 +223,7 @@ def extract_line_items_from_text(pdf_path):
                     mrp = float(parts[-8])
                     qty = int(float(parts[-9]))
                     gst_pct = cgst_pct + sgst_pct
+                    print(f"Extracted: Qty={qty}, MRP={mrp}, Rate1={base_rate1}, Rate2={base_rate2}, CGST%={cgst_pct}, SGST%={sgst_pct}, Total={total}")
                 
                 if qty <= 0 or mrp <= 0 or total <= 0:
                     continue
