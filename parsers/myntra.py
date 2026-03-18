@@ -111,18 +111,35 @@ def extract_line_items(pdf_path):
                 # Product name between HSN and EAN
                 product_name = " ".join(parts[sku_idx + 2:ean_idx]).strip()
                 
-                # Numeric values from end
+                # Numeric values from end - handle BOTH formats
                 total = float(parts[-1])
-                sgst_amt = float(parts[-2])
-                sgst_pct = float(parts[-3])
-                cgst_amt = float(parts[-4])
-                cgst_pct = float(parts[-5])
-                base_rate2 = float(parts[-6])
-                base_rate1 = float(parts[-7])
-                mrp = float(parts[-8])
-                qty = int(float(parts[-9]))
                 
-                gst_pct = cgst_pct + sgst_pct
+                # Check if format has CGST+SGST (old) or combined GST (new)
+                # Try to detect: if parts[-5] is a valid float and equals parts[-3], it's CGST+SGST format
+                try:
+                    # Old format: ...Qty MRP Rate1 Rate2 CGST% CGST_Amt SGST% SGST_Amt Total
+                    test_val = float(parts[-5])
+                    # If this succeeds and we have enough parts, assume old format
+                    if len(parts) >= sku_idx + 18:  # Has enough columns for old format
+                        sgst_amt = float(parts[-2])
+                        sgst_pct = float(parts[-3])
+                        cgst_amt = float(parts[-4])
+                        cgst_pct = float(parts[-5])
+                        base_rate2 = float(parts[-6])
+                        base_rate1 = float(parts[-7])
+                        mrp = float(parts[-8])
+                        qty = int(float(parts[-9]))
+                        gst_pct = cgst_pct + sgst_pct
+                    else:
+                        raise ValueError("Use new format")
+                except (ValueError, IndexError):
+                    # New format: ...Qty MRP Rate1 Rate2 GST% GST_Amt Total
+                    gst_amt = float(parts[-2])
+                    gst_pct = float(parts[-3])
+                    base_rate2 = float(parts[-4])
+                    base_rate1 = float(parts[-5])
+                    mrp = float(parts[-6])
+                    qty = int(float(parts[-7]))
                 
                 if qty <= 0 or mrp <= 0 or total <= 0:
                     continue
