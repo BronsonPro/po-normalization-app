@@ -131,6 +131,7 @@ def extract_line_items(pdf_path):
 def extract_line_items_from_text(pdf_path):
     """Extract using text with intelligent column detection"""
     items = []
+    debug_info = []  # Collect debug info to show in UI
     
     with pdfplumber.open(pdf_path) as pdf:
         text = pdf.pages[0].extract_text() or ""
@@ -147,6 +148,9 @@ def extract_line_items_from_text(pdf_path):
         # Detect if IGST or CGST+SGST based on header
         is_igst = 'IGST' in header_line if header_line else False
         is_cgst_sgst = 'CGST' in header_line and 'SGST' in header_line if header_line else False
+        
+        debug_info.append(f"Header line: {header_line[:100] if header_line else 'NOT FOUND'}")
+        debug_info.append(f"Detected IGST: {is_igst}, CGST+SGST: {is_cgst_sgst}")
         
         for line in lines:
             if 'BNPL' not in line:
@@ -189,31 +193,27 @@ def extract_line_items_from_text(pdf_path):
                 product_name = " ".join(parts[sku_idx + 2:ean_idx]).strip()
                 
                 # Now intelligently find numeric columns from the end
-                # Work backwards to find: Total, then GST info, then rates, then MRP, then Qty
-                
                 # Total is always last
                 total = float(parts[-1])
                 
-                # DEBUG
-                print(f"\nDEBUG Product: {sku_code}")
-                print(f"Total parts: {len(parts)}")
-                print(f"Header detected IGST: {is_igst}, CGST+SGST: {is_cgst_sgst}")
-                print(f"Last 10 parts: {parts[-10:]}")
+                debug_info.append(f"\n=== Product: {sku_code} ===")
+                debug_info.append(f"Total parts: {len(parts)}")
+                debug_info.append(f"Last 10 parts: {parts[-10:]}")
                 
                 # Determine format and extract accordingly
                 if is_igst or (not is_cgst_sgst and len(parts) < sku_idx + 20):
                     # IGST format: ...Qty MRP Rate1 Rate2 IGST% IGST_Amt Total
-                    print("Using IGST format")
+                    debug_info.append("Using IGST format")
                     igst_amt = float(parts[-2])
                     gst_pct = float(parts[-3])
                     base_rate2 = float(parts[-4])
                     base_rate1 = float(parts[-5])
                     mrp = float(parts[-6])
                     qty = int(float(parts[-7]))
-                    print(f"Extracted: Qty={qty}, MRP={mrp}, Rate1={base_rate1}, Rate2={base_rate2}, GST%={gst_pct}, Total={total}")
+                    debug_info.append(f"Qty={qty}, MRP={mrp}, Rate={base_rate2}, GST%={gst_pct}, Total={total}")
                 else:
                     # CGST+SGST format: ...Qty MRP Rate1 Rate2 CGST% CGST_Amt SGST% SGST_Amt Total
-                    print("Using CGST+SGST format")
+                    debug_info.append("Using CGST+SGST format")
                     sgst_amt = float(parts[-2])
                     sgst_pct = float(parts[-3])
                     cgst_amt = float(parts[-4])
@@ -223,7 +223,7 @@ def extract_line_items_from_text(pdf_path):
                     mrp = float(parts[-8])
                     qty = int(float(parts[-9]))
                     gst_pct = cgst_pct + sgst_pct
-                    print(f"Extracted: Qty={qty}, MRP={mrp}, Rate1={base_rate1}, Rate2={base_rate2}, CGST%={cgst_pct}, SGST%={sgst_pct}, Total={total}")
+                    debug_info.append(f"Qty={qty}, MRP={mrp}, Rate={base_rate2}, GST%={gst_pct}, Total={total}")
                 
                 if qty <= 0 or mrp <= 0 or total <= 0:
                     continue
@@ -241,8 +241,14 @@ def extract_line_items_from_text(pdf_path):
                 })
                 
             except (ValueError, IndexError) as e:
+                debug_info.append(f"ERROR parsing: {str(e)}")
                 continue
-
+    
+    # Show debug in Streamlit
+    import streamlit as st
+    with st.expander("🔍 Myntra Parser Debug Info"):
+        st.text("\n".join(debug_info))
+    
     return pd.DataFrame(items)
 
 # ------------------ SUMMARY EXTRACTION ------------------
