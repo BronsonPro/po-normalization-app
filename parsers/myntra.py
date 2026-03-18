@@ -68,10 +68,85 @@ def extract_line_items(pdf_path):
     items = []
     
     with pdfplumber.open(pdf_path) as pdf:
-        # Get all text from page 1
+        # Extract table from page 1 (diagnostic showed table headers exist)
+        tables = pdf.pages[0].extract_tables()
+        
+        if not tables:
+            return pd.DataFrame(items)
+        
+        # Find the product table (the one with column headers)
+        header_row = None
+        data_table = None
+        
+        for table in tables:
+            if not table:
+                continue
+            # Look for header row containing SKU Code
+            for row in table:
+                if row and any('SKU' in str(cell) for cell in row):
+                    header_row = row
+                    data_table = table
+                    break
+            if header_row:
+                break
+        
+        if not header_row:
+            # Fallback to text-based parsing
+            return extract_line_items_from_text(pdf_path)
+        
+        # Clean header names
+        headers = [str(cell).strip().replace('\n', ' ') for cell in header_row]
+        
+        # Find column indices by name
+        def find_col(keywords):
+            for i, h in enumerate(headers):
+                if any(kw.lower() in h.lower() for kw in keywords):
+                    return i
+            return -1
+        
+        sku_col = find_col(['SKU'])
+        hsn_col = find_col(['HSN'])
+        product_col = find_col(['Article', 'Name', 'Product'])
+        ean_col = find_col(['Article Number', 'EAN', 'Vendor Article Number'])
+        qty_col = find_col(['Quantity', 'Qty'])
+        mrp_col = find_col(['MRP'])
+        
+        # For base rate and GST, we need to check what columns exist
+        cgst_pct_col = find_col(['CGST %', 'CGST%'])
+        sgst_pct_col = find_col(['SGST %', 'SGST%'])
+        igst_pct_col = find_col(['IGST %', 'IGST%'])
+        
+        # Find rate columns - could be "Landed Cost", "Base Rate", etc.
+        rate_cols = []
+        for i, h in enumerate(headers):
+            if any(kw in h.lower() for kw in ['cost', 'rate', 'price']) and 'mrp' not in h.lower():
+                rate_cols.append(i)
+        
+        total_col = find_col(['Total', 'Amount'])
+        
+        # Now extract from text since table structure doesn't preserve all data properly
+        # Use table only to understand structure, extract from text
+        return extract_line_items_from_text(pdf_path)
+
+def extract_line_items_from_text(pdf_path):
+    """Extract using text with intelligent column detection"""
+    items = []
+    
+    with pdfplumber.open(pdf_path) as pdf:
         text = pdf.pages[0].extract_text() or ""
         
         lines = text.split('\n')
+        
+        # Find header line to understand column order
+        header_line = None
+        for line in lines:
+            if 'SKU Code' in line and 'HSN' in line:
+                header_line = line
+                break
+        
+        # Detect if IGST or CGST+SGST based on header
+        is_igst = 'IGST' in header_line if header_line else False
+        is_cgst_sgst = 'CGST' in header_line and 'SGST' in header_line if header_line else False
         
         for line in lines:
             if 'BNPL' not in line:
@@ -79,7 +154,7 @@ def extract_line_items(pdf_path):
             
             parts = line.strip().split()
             
-            if len(parts) < 15:
+            if len(parts) < 10:
                 continue
             
             try:
@@ -94,13 +169,15 @@ def extract_line_items(pdf_path):
                     continue
                 
                 sku_code = parts[sku_idx]
+                
+                # HSN is right after SKU
                 hsn = parts[sku_idx + 1] if sku_idx + 1 < len(parts) else ""
                 
-                # Find 8-digit EAN
+                # Find EAN - look for 8-digit or longer number (could be 8, 11, or 13 digits)
                 ean = ""
                 ean_idx = -1
                 for i in range(sku_idx + 2, len(parts)):
-                    if parts[i].isdigit() and len(parts[i]) == 8:
+                    if parts[i].isdigit() and len(parts[i]) >= 8:
                         ean = parts[i]
                         ean_idx = i
                         break
@@ -108,38 +185,35 @@ def extract_line_items(pdf_path):
                 if not ean:
                     continue
                 
-                # Product name between HSN and EAN
+                # Product name is between HSN and EAN
                 product_name = " ".join(parts[sku_idx + 2:ean_idx]).strip()
                 
-                # Numeric values from end - handle BOTH formats
+                # Now intelligently find numeric columns from the end
+                # Work backwards to find: Total, then GST info, then rates, then MRP, then Qty
+                
+                # Total is always last
                 total = float(parts[-1])
                 
-                # Check if format has CGST+SGST (old) or combined GST (new)
-                # Try to detect: if parts[-5] is a valid float and equals parts[-3], it's CGST+SGST format
-                try:
-                    # Old format: ...Qty MRP Rate1 Rate2 CGST% CGST_Amt SGST% SGST_Amt Total
-                    test_val = float(parts[-5])
-                    # If this succeeds and we have enough parts, assume old format
-                    if len(parts) >= sku_idx + 18:  # Has enough columns for old format
-                        sgst_amt = float(parts[-2])
-                        sgst_pct = float(parts[-3])
-                        cgst_amt = float(parts[-4])
-                        cgst_pct = float(parts[-5])
-                        base_rate2 = float(parts[-6])
-                        base_rate1 = float(parts[-7])
-                        mrp = float(parts[-8])
-                        qty = int(float(parts[-9]))
-                        gst_pct = cgst_pct + sgst_pct
-                    else:
-                        raise ValueError("Use new format")
-                except (ValueError, IndexError):
-                    # New format: ...Qty MRP Rate1 Rate2 GST% GST_Amt Total
-                    gst_amt = float(parts[-2])
+                # Determine format and extract accordingly
+                if is_igst or (not is_cgst_sgst and len(parts) < sku_idx + 20):
+                    # IGST format: ...Qty MRP Rate1 Rate2 IGST% IGST_Amt Total
+                    igst_amt = float(parts[-2])
                     gst_pct = float(parts[-3])
                     base_rate2 = float(parts[-4])
                     base_rate1 = float(parts[-5])
                     mrp = float(parts[-6])
                     qty = int(float(parts[-7]))
+                else:
+                    # CGST+SGST format: ...Qty MRP Rate1 Rate2 CGST% CGST_Amt SGST% SGST_Amt Total
+                    sgst_amt = float(parts[-2])
+                    sgst_pct = float(parts[-3])
+                    cgst_amt = float(parts[-4])
+                    cgst_pct = float(parts[-5])
+                    base_rate2 = float(parts[-6])
+                    base_rate1 = float(parts[-7])
+                    mrp = float(parts[-8])
+                    qty = int(float(parts[-9]))
+                    gst_pct = cgst_pct + sgst_pct
                 
                 if qty <= 0 or mrp <= 0 or total <= 0:
                     continue
@@ -156,7 +230,7 @@ def extract_line_items(pdf_path):
                     "Total": total,
                 })
                 
-            except (ValueError, IndexError):
+            except (ValueError, IndexError) as e:
                 continue
 
     return pd.DataFrame(items)
