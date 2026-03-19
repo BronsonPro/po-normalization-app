@@ -116,7 +116,9 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     
                     # Extract data from correct columns with defensive length checks
                     # Column mapping from PDF:
-                    # 0=Sr, 1=Item Code, 2=Product, 3=HSN, 4=Qty, 5=MRP, 6=Base Cost, 7=Taxable Value, 13=IGST Rate, 14=IGST Amt, 17=Total
+                    # 0=Sr, 1=Item Code, 2=Product, 3=HSN, 4=Qty, 5=MRP, 6=Base Cost, 7=Taxable Value, 
+                    # 8=CGST Rate, 9=CGST Amt, 10=SGST Rate, 11=SGST Amt, 12=IGST Rate, 13=IGST Amt, 
+                    # 14=CESS Rate, 15=CESS Amt, 16=Add CESS Rate, 17=Add CESS Amt, 18=Total
                     
                     sr_no = first_cell
                     item_code = str(row[1] or "").strip() if len(row) > 1 else ""
@@ -125,8 +127,26 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     qty = str(row[4] or "").strip() if len(row) > 4 else ""
                     mrp = str(row[5] or "").strip() if len(row) > 5 else ""
                     base_rate = str(row[6] or "").strip() if len(row) > 6 else ""
-                    gst_rate = str(row[13] or "").strip() if len(row) > 13 else ""  # IGST Rate column
-                    total = str(row[17] or "").strip() if len(row) > 17 else ""  # Total column at index 17
+                    
+                    # GST Rate - could be CGST+SGST or IGST
+                    cgst_rate = str(row[8] or "").strip() if len(row) > 8 else ""
+                    sgst_rate = str(row[10] or "").strip() if len(row) > 10 else ""
+                    igst_rate = str(row[12] or "").strip() if len(row) > 12 else ""
+                    
+                    # Use IGST if present, otherwise CGST+SGST
+                    if igst_rate and igst_rate != "0" and igst_rate != "0.00":
+                        gst_rate = igst_rate
+                    else:
+                        gst_rate = cgst_rate  # CGST = SGST, so just use CGST
+                    
+                    # Total column - try both index 17 (old format) and 18 (new format)
+                    total = ""
+                    if len(row) > 18:
+                        total = str(row[18] or "").strip()
+                    elif len(row) > 17:
+                        total = str(row[17] or "").strip()
+                    else:
+                        total = ""
                     
                     # Map Item Code to EAN if available from master
                     item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
