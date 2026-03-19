@@ -115,10 +115,10 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         continue
                     
                     # Extract data from correct columns with defensive length checks
-                    # Column mapping from PDF:
-                    # 0=Sr, 1=Item Code, 2=Product, 3=HSN, 4=Qty, 5=MRP, 6=Base Cost, 7=Taxable Value, 
-                    # 8=CGST Rate, 9=CGST Amt, 10=SGST Rate, 11=SGST Amt, 12=IGST Rate, 13=IGST Amt, 
-                    # 14=CESS Rate, 15=CESS Amt, 16=Add CESS Rate, 17=Add CESS Amt, 18=Total
+                    # Column mapping from actual PDF data:
+                    # 0=Sr, 1=Item Code, 2=Product, 3=HSN, 4=Qty, 5=MRP, 6=Base Cost, 7=Taxable Value,
+                    # 8=CGST Rate, 9=CGST Amt, 10=SGST Rate, 11=SGST Amt, 12=IGST Rate, 13=IGST Amt,
+                    # 14=CESS Rate, 15=CESS Amt, 16=Total (no Additional CESS columns in this format)
                     
                     sr_no = first_cell
                     item_code = str(row[1] or "").strip() if len(row) > 1 else ""
@@ -138,6 +138,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     if not hasattr(st.session_state, 'scootsy_gst_debug_shown'):
                         with st.expander("🔍 Scootsy GST Debug (first row)"):
                             st.write(f"Row length: {len(row)}")
+                            st.write(f"Full row: {row}")
                             st.write(f"CGST Rate (index 8): '{cgst_rate}'")
                             st.write(f"SGST Rate (index 10): '{sgst_rate}'")
                             st.write(f"IGST Rate (index 12): '{igst_rate}'")
@@ -156,10 +157,16 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     except:
                         gst_rate = ""
                     
-                    # Total column - try both index 17 (old format) and 18 (new format)
+                    # Total column - check index 16 first (new format), then 17/18 (other formats)
                     total = ""
-                    if len(row) > 18:
-                        total = str(row[18] or "").strip()
+                    if len(row) > 16:
+                        total = str(row[16] or "").strip()
+                        # If index 16 is empty or invalid, try others
+                        if not total or total == "0" or total == "0.00":
+                            if len(row) > 18:
+                                total = str(row[18] or "").strip()
+                            elif len(row) > 17:
+                                total = str(row[17] or "").strip()
                     elif len(row) > 17:
                         total = str(row[17] or "").strip()
                     else:
