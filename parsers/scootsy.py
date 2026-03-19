@@ -153,6 +153,13 @@ def convert_pdf_to_excel(pdf_path, output_path):
     # Search last page first, then first page as fallback
     summary_text = last_page_text if last_page_text else first_page_text
     
+    # DEBUG - Show what we're searching
+    import streamlit as st
+    with st.expander("🔍 Scootsy Summary Debug"):
+        st.text(f"Summary text length: {len(summary_text)}")
+        st.text("Last 500 chars of summary text:")
+        st.text(summary_text[-500:] if len(summary_text) > 500 else summary_text)
+    
     total_amount = ""
     total_tax = ""
     grand_total = ""
@@ -162,14 +169,23 @@ def convert_pdf_to_excel(pdf_path, output_path):
     amt_match = re.search(r'Total\s+Amount\s*\(INR\)\s*:?\s*([\d,.]+)', summary_text, re.IGNORECASE)
     if amt_match:
         total_amount = amt_match.group(1)
+        st.success(f"Found Total Amount: {total_amount}")
+    else:
+        st.warning("Total Amount not found")
     
     tax_match = re.search(r'Total\s+Tax\s*\(INR\)\s*:?\s*([\d,.]+)', summary_text, re.IGNORECASE)
     if tax_match:
         total_tax = tax_match.group(1)
+        st.success(f"Found Total Tax: {total_tax}")
+    else:
+        st.warning("Total Tax not found")
     
     grand_match = re.search(r'Grand\s+Total\s*\(INR\)\s*:?\s*([\d,.]+)', summary_text, re.IGNORECASE)
     if grand_match:
         grand_total = grand_match.group(1)
+        st.success(f"Found Grand Total: {grand_total}")
+    else:
+        st.warning("Grand Total not found")
     
     # Add summary rows
     all_rows.append(["", "", "", "", "", "", "", "", "", ""])
