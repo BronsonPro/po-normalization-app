@@ -115,10 +115,10 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         continue
                     
                     # Extract data from correct columns with defensive length checks
-                    # Column mapping from actual PDF data:
+                    # Column mapping (pdfplumber adds extra None at index 9):
                     # 0=Sr, 1=Item Code, 2=Product, 3=HSN, 4=Qty, 5=MRP, 6=Base Cost, 7=Taxable Value,
-                    # 8=CGST Rate, 9=CGST Amt, 10=SGST Rate, 11=SGST Amt, 12=IGST Rate, 13=IGST Amt,
-                    # 14=CESS Rate, 15=CESS Amt, 16=Total (no Additional CESS columns in this format)
+                    # 8=CGST Rate, 9=None(!), 10=CGST Amt, 11=SGST Rate, 12=SGST Amt, 
+                    # 13=IGST Rate, 14=IGST Amt, 15=CESS Rate, 16=CESS Amt, 17=?, 18=Total
                     
                     sr_no = first_cell
                     item_code = str(row[1] or "").strip() if len(row) > 1 else ""
@@ -128,23 +128,10 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     mrp = str(row[5] or "").strip() if len(row) > 5 else ""
                     base_rate = str(row[6] or "").strip() if len(row) > 6 else ""
                     
-                    # GST Rate - could be CGST+SGST or IGST
+                    # GST Rate - adjusted for extra None column
                     cgst_rate = str(row[8] or "").strip() if len(row) > 8 else ""
-                    sgst_rate = str(row[10] or "").strip() if len(row) > 10 else ""
-                    igst_rate = str(row[12] or "").strip() if len(row) > 12 else ""
-                    
-                    # DEBUG - temporary (shows for first data row only)
-                    import streamlit as st
-                    if sr_no == "1":  # Only show for first row
-                        with st.expander("🔍 Scootsy GST Debug (Row 1)", expanded=True):
-                            st.write(f"Row length: {len(row)}")
-                            st.write(f"Full row values:")
-                            for i, val in enumerate(row):
-                                st.write(f"  Index {i}: '{val}'")
-                            st.write(f"\nExtracted GST values:")
-                            st.write(f"CGST Rate (index 8): '{cgst_rate}'")
-                            st.write(f"SGST Rate (index 10): '{sgst_rate}'")
-                            st.write(f"IGST Rate (index 12): '{igst_rate}'")
+                    sgst_rate = str(row[11] or "").strip() if len(row) > 11 else ""  # Shifted by 1
+                    igst_rate = str(row[13] or "").strip() if len(row) > 13 else ""  # Shifted by 1
                     
                     # Use IGST if present, otherwise CGST+SGST
                     gst_rate = ""
@@ -159,20 +146,8 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     except:
                         gst_rate = ""
                     
-                    # Total column - check index 16 first (new format), then 17/18 (other formats)
-                    total = ""
-                    if len(row) > 16:
-                        total = str(row[16] or "").strip()
-                        # If index 16 is empty or invalid, try others
-                        if not total or total == "0" or total == "0.00":
-                            if len(row) > 18:
-                                total = str(row[18] or "").strip()
-                            elif len(row) > 17:
-                                total = str(row[17] or "").strip()
-                    elif len(row) > 17:
-                        total = str(row[17] or "").strip()
-                    else:
-                        total = ""
+                    # Total column at index 18
+                    total = str(row[18] or "").strip() if len(row) > 18 else ""
                     
                     # Map Item Code to EAN if available from master
                     item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
