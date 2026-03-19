@@ -134,10 +134,17 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     igst_rate = str(row[12] or "").strip() if len(row) > 12 else ""
                     
                     # Use IGST if present, otherwise CGST+SGST
-                    if igst_rate and igst_rate != "0" and igst_rate != "0.00":
-                        gst_rate = igst_rate
-                    else:
-                        gst_rate = cgst_rate  # CGST = SGST, so just use CGST
+                    gst_rate = ""
+                    try:
+                        if igst_rate and float(igst_rate) > 0:
+                            gst_rate = str(int(float(igst_rate)))  # IGST
+                        else:
+                            # CGST + SGST
+                            cgst_val = float(cgst_rate) if cgst_rate else 0
+                            sgst_val = float(sgst_rate) if sgst_rate else 0
+                            gst_rate = str(int(cgst_val + sgst_val))
+                    except:
+                        gst_rate = ""
                     
                     # Total column - try both index 17 (old format) and 18 (new format)
                     total = ""
@@ -178,17 +185,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
             
             # Look for summary keywords on this page
             if 'Total Amount' in page_text or 'Grand Total' in page_text:
-                # DEBUG - Show what we're searching
-                import streamlit as st
-                with st.expander("🔍 Scootsy Summary Debug"):
-                    st.text(f"Found summary on page {page_num + 1}")
-                    st.text(f"Page text length: {len(page_text)}")
-                    # Find the section with totals
-                    total_idx = page_text.find('Total Amount')
-                    if total_idx > 0:
-                        st.text("Summary section:")
-                        st.text(page_text[total_idx:total_idx+300])
-                
                 # Extract summary values
                 amt_match = re.search(r'Total\s+Amount\s*\(INR\)\s*:?\s*([\d,.]+)', page_text, re.IGNORECASE)
                 if amt_match:
