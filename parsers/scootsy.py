@@ -157,16 +157,17 @@ def convert_pdf_to_excel(pdf_path, output_path):
     total_tax = ""
     grand_total = ""
     
-    # Extract summary values - match actual format without extra parentheses
-    amt_match = re.search(r'Total Amount\s*\(INR\)\s+([\d,.]+)', summary_text)
+    # Extract summary values - flexible regex to handle various spacing/formatting
+    # Patterns handle: "Total Amount (INR) 12345.67" or "Total Amount (INR): 12345.67"
+    amt_match = re.search(r'Total\s+Amount\s*\(INR\)\s*:?\s*([\d,.]+)', summary_text, re.IGNORECASE)
     if amt_match:
         total_amount = amt_match.group(1)
     
-    tax_match = re.search(r'Total Tax\s*\(INR\)\s+([\d,.]+)', summary_text)
+    tax_match = re.search(r'Total\s+Tax\s*\(INR\)\s*:?\s*([\d,.]+)', summary_text, re.IGNORECASE)
     if tax_match:
         total_tax = tax_match.group(1)
     
-    grand_match = re.search(r'Grand Total\s*\(INR\)\s+([\d,.]+)', summary_text)
+    grand_match = re.search(r'Grand\s+Total\s*\(INR\)\s*:?\s*([\d,.]+)', summary_text, re.IGNORECASE)
     if grand_match:
         grand_total = grand_match.group(1)
     
