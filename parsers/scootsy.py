@@ -145,47 +145,46 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         total
                     ])
     
-    # Add summary rows - extract from PDF (check last page for multi-page POs)
-    # For multi-page POs, summary is usually on the last page
-    with pdfplumber.open(pdf_path) as pdf:
-        last_page_text = pdf.pages[-1].extract_text() or ""
-    
-    # Search last page first, then first page as fallback
-    summary_text = last_page_text if last_page_text else first_page_text
-    
-    # DEBUG - Show what we're searching
-    import streamlit as st
-    with st.expander("🔍 Scootsy Summary Debug"):
-        st.text(f"Summary text length: {len(summary_text)}")
-        st.text("Last 500 chars of summary text:")
-        st.text(summary_text[-500:] if len(summary_text) > 500 else summary_text)
-    
+    # Add summary rows - extract from PDF
+    # Summary can be on any page, so search all pages
     total_amount = ""
     total_tax = ""
     grand_total = ""
     
-    # Extract summary values - flexible regex to handle various spacing/formatting
-    # Patterns handle: "Total Amount (INR) 12345.67" or "Total Amount (INR): 12345.67"
-    amt_match = re.search(r'Total\s+Amount\s*\(INR\)\s*:?\s*([\d,.]+)', summary_text, re.IGNORECASE)
-    if amt_match:
-        total_amount = amt_match.group(1)
-        st.success(f"Found Total Amount: {total_amount}")
-    else:
-        st.warning("Total Amount not found")
-    
-    tax_match = re.search(r'Total\s+Tax\s*\(INR\)\s*:?\s*([\d,.]+)', summary_text, re.IGNORECASE)
-    if tax_match:
-        total_tax = tax_match.group(1)
-        st.success(f"Found Total Tax: {total_tax}")
-    else:
-        st.warning("Total Tax not found")
-    
-    grand_match = re.search(r'Grand\s+Total\s*\(INR\)\s*:?\s*([\d,.]+)', summary_text, re.IGNORECASE)
-    if grand_match:
-        grand_total = grand_match.group(1)
-        st.success(f"Found Grand Total: {grand_total}")
-    else:
-        st.warning("Grand Total not found")
+    with pdfplumber.open(pdf_path) as pdf:
+        # Search all pages for summary
+        for page_num, page in enumerate(pdf.pages):
+            page_text = page.extract_text() or ""
+            
+            # Look for summary keywords on this page
+            if 'Total Amount' in page_text or 'Grand Total' in page_text:
+                # DEBUG - Show what we're searching
+                import streamlit as st
+                with st.expander("🔍 Scootsy Summary Debug"):
+                    st.text(f"Found summary on page {page_num + 1}")
+                    st.text(f"Page text length: {len(page_text)}")
+                    # Find the section with totals
+                    total_idx = page_text.find('Total Amount')
+                    if total_idx > 0:
+                        st.text("Summary section:")
+                        st.text(page_text[total_idx:total_idx+300])
+                
+                # Extract summary values
+                amt_match = re.search(r'Total\s+Amount\s*\(INR\)\s*:?\s*([\d,.]+)', page_text, re.IGNORECASE)
+                if amt_match:
+                    total_amount = amt_match.group(1)
+                
+                tax_match = re.search(r'Total\s+Tax\s*\(INR\)\s*:?\s*([\d,.]+)', page_text, re.IGNORECASE)
+                if tax_match:
+                    total_tax = tax_match.group(1)
+                
+                grand_match = re.search(r'Grand\s+Total\s*\(INR\)\s*:?\s*([\d,.]+)', page_text, re.IGNORECASE)
+                if grand_match:
+                    grand_total = grand_match.group(1)
+                
+                # If we found at least one value, stop searching
+                if total_amount or total_tax or grand_total:
+                    break
     
     # Add summary rows
     all_rows.append(["", "", "", "", "", "", "", "", "", ""])
