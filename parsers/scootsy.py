@@ -133,16 +133,18 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     sgst_rate = str(row[10] or "").strip() if len(row) > 10 else ""
                     igst_rate = str(row[12] or "").strip() if len(row) > 12 else ""
                     
-                    # DEBUG - temporary
+                    # DEBUG - temporary (shows for first data row only)
                     import streamlit as st
-                    if not hasattr(st.session_state, 'scootsy_gst_debug_shown'):
-                        with st.expander("🔍 Scootsy GST Debug (first row)"):
+                    if sr_no == "1":  # Only show for first row
+                        with st.expander("🔍 Scootsy GST Debug (Row 1)", expanded=True):
                             st.write(f"Row length: {len(row)}")
-                            st.write(f"Full row: {row}")
+                            st.write(f"Full row values:")
+                            for i, val in enumerate(row):
+                                st.write(f"  Index {i}: '{val}'")
+                            st.write(f"\nExtracted GST values:")
                             st.write(f"CGST Rate (index 8): '{cgst_rate}'")
                             st.write(f"SGST Rate (index 10): '{sgst_rate}'")
                             st.write(f"IGST Rate (index 12): '{igst_rate}'")
-                        st.session_state.scootsy_gst_debug_shown = True
                     
                     # Use IGST if present, otherwise CGST+SGST
                     gst_rate = ""
