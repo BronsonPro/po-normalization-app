@@ -25,8 +25,8 @@ def extract_po_header(pdf_path):
     data = {
         "Party Name": buyer_name,
         "PO No": find(r"PO No\s+([A-Z0-9]+)"),
-        "PO Date": find(r"PO Date\s+([A-Za-z]+\s\d{2},\s\d{4})"),
-        "PO Expiry Date": find(r"PO Expiry Date\s+([A-Za-z]+\s\d{2},\s\d{4})"),
+        "PO Date": find(r"PO Date\s+([A-Za-z]+\s\d{1,2},\s\d{4})"),
+        "PO Expiry Date": find(r"PO Expiry Date\s+([A-Za-z]+\s\d{1,2},\s\d{4})"),
         "Shipping Address": shipping_address,
         "GST #": buyer_gstin,
     }
