@@ -76,22 +76,18 @@ def convert_pdf_to_excel(pdf_path, output_path):
         # Extract table data from all pages
         for page_num, page in enumerate(pdf.pages):
             # For page 2+, use more lenient table extraction settings
-            # to capture rows at the top without borders AND preserve multi-line text
+            # to capture rows at the top without borders
             if page_num > 0:
                 # Use explicit vertical lines and snap tolerance to catch borderless rows
-                # keep_blank_chars=True preserves multi-line text within cells
                 tables = page.extract_tables(table_settings={
                     "vertical_strategy": "text",
                     "horizontal_strategy": "text",
                     "snap_tolerance": 5,
                     "join_tolerance": 5,
-                    "edge_min_length": 10,
-                    "keep_blank_chars": True
+                    "edge_min_length": 10
                 })
             else:
-                tables = page.extract_tables(table_settings={
-                    "keep_blank_chars": True
-                })
+                tables = page.extract_tables()
             
             if not tables:
                 continue
@@ -244,13 +240,14 @@ def convert_pdf_to_excel(pdf_path, output_path):
             
             # FALLBACK: Extract rows from text that weren't captured in tables
             # This handles rows at page tops without borders AND fixes truncated product names
-            page_text = page.extract_text() or ""
+            # Use layout=True to preserve positioning and multi-line text
+            page_text = page.extract_text(layout=True) or ""
             text_lines = page_text.split('\n')
             
             import streamlit as st
             text_matches_found = []
             
-            for line in text_lines:
+            for line_idx, line in enumerate(text_lines):
                 # Look for lines that start with a number followed by item code pattern
                 # Pattern: "5 255618 Beautiliss Professional Classic Eyelash Curler ... 82142090 12 200.00 ..."
                 match = re.match(r'^(\d+)\s+(\d{6})\s+(.+)', line)
@@ -259,12 +256,24 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     item_code = match.group(2)
                     rest = match.group(3)
                     
+                    # For page 2, product name might be on multiple lines
+                    # Collect next few lines until we hit the HSN (8-digit number)
+                    if page_num > 0:  # Page 2+
+                        full_rest = rest
+                        for next_line in text_lines[line_idx + 1:line_idx + 10]:  # Check next 10 lines
+                            # Stop if we hit a line with HSN or another serial number
+                            if re.search(r'\d{8}', next_line) or re.match(r'^\d+\s+\d{6}', next_line):
+                                break
+                            # Add this line to the product name
+                            full_rest += ' ' + next_line.strip()
+                        rest = full_rest
+                    
                     # DEBUG - Track matches
                     if sr_no in ["5", "6"]:
                         text_matches_found.append({
                             'sr_no': sr_no,
                             'line': line[:100],
-                            'rest': rest[:50]
+                            'rest': rest[:80]
                         })
                     
                     # Check if this row was already processed with full product name
