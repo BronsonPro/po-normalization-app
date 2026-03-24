@@ -781,19 +781,7 @@ if po_df is not None and master_df is not None:
             merged = po.merge(master, on="Item Code", how="left", suffixes=("_PO", "_MASTER"))
             merged["Product Name"] = merged["Product Name_MASTER"].fillna(merged["Product Name_PO"])
 
-            # DEBUG - Persistent version
-            import streamlit as st
-            st.write("### 🔍 Product Name Merge Debug")
-            st.write("Merged columns:", list(merged.columns))
-            st.write("Sample row 0:")
-            st.dataframe(merged.iloc[0:1][["Item Code", "Product Name_PO", "Product Name_MASTER", "Product Name"]])
-            st.write("---")
-            # DEBUG - Check row 5 specifically
-            st.write("### Row 5 Debug")
-            if len(merged) > 4:
-                st.dataframe(merged.iloc[4:5][["Item Code", "Product Name_PO", "Product Name_MASTER", "Product Name"]])
-
-           
+            
         else:
             merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
 
@@ -841,11 +829,6 @@ if po_df is not None and master_df is not None:
 
             # SCOOTSY FIX #4: Proper merge for Scootsy
             if party == "Scootsy":
-                # DEBUG
-                st.write("### Master columns for Scootsy merge:")
-                st.write(list(master.columns))
-                st.write("Sample master row:")
-                st.dataframe(master.head(1))
                 # Drop empty EAN from PO, then merge on Item Code
                 if "EAN" in po.columns:
                     po = po.drop(columns=["EAN"])
@@ -878,6 +861,10 @@ if po_df is not None and master_df is not None:
 
             if "Product Name_MASTER" in upd.columns:
                 upd["Product Name"] = upd["Product Name_MASTER"].fillna(upd["Product Name_PO"])
+            elif party == "Scootsy" and "Product Name_y" in upd.columns:
+                # For Scootsy: Handle _x and _y suffixes
+                upd["Product Name"] = upd["Product Name_y"]
+                upd = upd.drop(columns=["Product Name_x", "Product Name_y"])
 
             if "HSN Code_MASTER" in upd.columns:
                 upd["HSN Code"] = upd["HSN Code_MASTER"].fillna(upd["HSN Code_PO"])
