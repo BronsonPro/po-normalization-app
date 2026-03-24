@@ -139,13 +139,17 @@ def convert_pdf_to_excel(pdf_path, output_path):
         
         # Fallback: Extract shipping address from first page text if not found in table
         if not header_data["Shipping Address"]:
-            # Look for "Ship To:" or "Consignee:" section
-            ship_match = re.search(r'(?:Ship To|Consignee)[:.\s]+(.*?)(?:GSTIN|Contact|PO)', first_page_text, re.DOTALL | re.IGNORECASE)
+            # Look for "Shipping Address" or "Ship To:" or "Consignee:" section
+            ship_match = re.search(r'Shipping Address\s+(.*?)(?:GSTIN|Contact|GST No|PO\s+No)', first_page_text, re.DOTALL | re.IGNORECASE)
+            if not ship_match:
+                ship_match = re.search(r'(?:Ship To|Consignee)[:.\s]+(.*?)(?:GSTIN|Contact|PO)', first_page_text, re.DOTALL | re.IGNORECASE)
+            
             if ship_match:
                 addr_text = ship_match.group(1).strip()
-                # Clean up - take first few lines
-                addr_lines = [line.strip() for line in addr_text.split('\n') if line.strip()][:5]
-                header_data["Shipping Address"] = ', '.join(addr_lines)[:250]
+                # Clean up - take first few lines, remove extra spaces
+                addr_lines = [line.strip() for line in addr_text.split('\n') if line.strip()]
+                # Join first 6 lines (company name + address lines)
+                header_data["Shipping Address"] = ' '.join(addr_lines[:6])[:250]
         
         # DEBUG - Show shipping address extraction (only once after all pages processed)
         import streamlit as st
@@ -264,6 +268,19 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
                     ean = master_ean_map.get(item_code_clean, "")  # Get EAN from master map
                     master_product_name = master_product_map.get(item_code_clean, "")  # Get Product Name from master
+                    
+                    # DEBUG - Show mapping for rows 5 and 6
+                    import streamlit as st
+                    if sr_no in ["5", "6"]:
+                        if not hasattr(st.session_state, 'scootsy_product_debug_shown'):
+                            with st.expander(f"🔍 Product Mapping Debug", expanded=True):
+                                st.write(f"Row {sr_no}:")
+                                st.write(f"  Item Code: '{item_code}' → Clean: '{item_code_clean}'")
+                                st.write(f"  PO Product Name: '{product_name}'")
+                                st.write(f"  Master Product Name: '{master_product_name}'")
+                                st.write(f"  EAN: '{ean}'")
+                                st.write(f"  Master map size: {len(master_product_map)} items")
+                            st.session_state.scootsy_product_debug_shown = True
                     
                     # Use master product name if available, otherwise use PO product name
                     final_product_name = master_product_name if master_product_name else product_name
