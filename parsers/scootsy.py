@@ -16,6 +16,10 @@ def convert_pdf_to_excel(pdf_path, output_path):
     
     all_rows = []
     
+    # DEBUG - Track all rows seen across all pages
+    import streamlit as st
+    all_rows_seen = []
+    
     # Extract header info
     header_data = {
         "PO No": "",
@@ -73,9 +77,21 @@ def convert_pdf_to_excel(pdf_path, output_path):
         if expiry_match:
             header_data["PO Expiry Date"] = expiry_match.group(1)
         
-        # Extract table data
-        for page in pdf.pages:
-            tables = page.extract_tables()
+        # Extract table data from all pages
+        for page_num, page in enumerate(pdf.pages):
+            # For page 2+, use more lenient table extraction settings
+            # to capture rows at the top without borders
+            if page_num > 0:
+                # Use explicit vertical lines and snap tolerance to catch borderless rows
+                tables = page.extract_tables(table_settings={
+                    "vertical_strategy": "text",
+                    "horizontal_strategy": "text",
+                    "snap_tolerance": 5,
+                    "join_tolerance": 5,
+                    "edge_min_length": 10
+                })
+            else:
+                tables = page.extract_tables()
             
             if not tables:
                 continue
@@ -104,21 +120,22 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 if gstin_match:
                     header_data["GST No"] = gstin_match.group(1)
             
+            # Track which serial numbers we've processed
+            processed_sr_nos = set()
+            
             for table in tables:
                 for row_idx, row in enumerate(table):
-                    # DEBUG - Check what's happening with rows that might be skipped
                     first_cell = str(row[0] or "").strip()
                     
-                    import streamlit as st
-                    # Show debug for rows near the page break (rows 4-6)
-                    if first_cell in ["4", "5", "6"]:
-                        with st.expander(f"🔍 Debug Row {first_cell}", expanded=(first_cell == "5")):
-                            st.write(f"Row length: {len(row)}")
-                            st.write(f"First cell: '{first_cell}'")
-                            st.write(f"Is digit: {first_cell.isdigit()}")
-                            st.write(f"Passes len check (>= 10): {len(row) >= 10}")
-                            if len(row) < 20:
-                                st.write(f"Full row: {row}")
+                    # DEBUG - Log every row
+                    all_rows_seen.append({
+                        'page': page_num + 1,
+                        'row_idx': row_idx,
+                        'first_cell': first_cell,
+                        'row_len': len(row),
+                        'is_digit': first_cell.isdigit() if first_cell else False,
+                        'in_processed': first_cell in processed_sr_nos
+                    })
                     
                     if not row or len(row) < 10:
                         continue
@@ -126,6 +143,11 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     # Check if it's a data row (first column is a number)
                     if not first_cell or not first_cell.isdigit():
                         continue
+                    
+                    # Skip if already processed (avoid duplicates)
+                    if first_cell in processed_sr_nos:
+                        continue
+                    processed_sr_nos.add(first_cell)
                     
                     # Detect table format based on row length
                     # Page 1: 19 columns with None at index 9
@@ -190,6 +212,108 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         gst_rate,
                         total
                     ])
+            
+            # FALLBACK: Extract rows from text that weren't captured in tables
+            # This handles rows at page tops without borders
+            page_text = page.extract_text() or ""
+            text_lines = page_text.split('\n')
+            
+            for line in text_lines:
+                # Look for lines that start with a number followed by item code pattern
+                # Pattern: "5 380147 Product Name 96032900 48 550.00 ..."
+                match = re.match(r'^(\d+)\s+(\d{6})\s+(.+)', line)
+                if match:
+                    sr_no = match.group(1)
+                    
+                    # Skip if already processed from table extraction
+                    if sr_no in processed_sr_nos:
+                        continue
+                    
+                    # Try to parse the entire line as space-separated values
+                    parts = line.split()
+                    if len(parts) < 10:
+                        continue
+                    
+                    # Extract fields (this is approximate - adjust indices as needed)
+                    item_code = parts[1] if len(parts) > 1 else ""
+                    
+                    # Product name spans multiple parts until HSN (8-digit number)
+                    product_parts = []
+                    hsn_idx = -1
+                    for i in range(2, len(parts)):
+                        if len(parts[i]) == 8 and parts[i].isdigit():
+                            hsn = parts[i]
+                            hsn_idx = i
+                            break
+                        product_parts.append(parts[i])
+                    
+                    if hsn_idx == -1:
+                        continue
+                    
+                    product_name = ' '.join(product_parts)
+                    
+                    # After HSN: Qty, MRP, Base Cost, Taxable Value, GST rates, Total
+                    remaining = parts[hsn_idx + 1:]
+                    if len(remaining) < 8:
+                        continue
+                    
+                    qty = remaining[0] if len(remaining) > 0 else ""
+                    mrp = remaining[1] if len(remaining) > 1 else ""
+                    base_rate = remaining[2] if len(remaining) > 2 else ""
+                    
+                    # Try to find IGST rate (usually around index 6-8 in remaining)
+                    # This is approximate - the exact index depends on format
+                    igst_rate = ""
+                    for val in remaining[5:10]:
+                        try:
+                            if float(val) > 0 and float(val) <= 28:  # GST rates are 0-28%
+                                igst_rate = val
+                                break
+                        except:
+                            continue
+                    
+                    gst_rate = str(int(float(igst_rate))) if igst_rate else ""
+                    
+                    # Total is usually the last value
+                    total = remaining[-1] if remaining else ""
+                    
+                    # Map Item Code to EAN
+                    item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
+                    ean = master_ean_map.get(item_code_clean, "")
+                    
+                    all_rows.append([
+                        sr_no,
+                        ean,
+                        item_code,
+                        product_name,
+                        hsn,
+                        qty,
+                        mrp,
+                        base_rate,
+                        gst_rate,
+                        total
+                    ])
+                    
+                    processed_sr_nos.add(sr_no)
+    
+    # DEBUG - Show all rows seen
+    import streamlit as st
+    with st.expander("🔍 All Rows Seen (Debug)", expanded=True):
+        st.write(f"Total rows encountered: {len(all_rows_seen)}")
+        st.write(f"Total data rows processed: {len(all_rows)}")
+        
+        # Show rows 1-10
+        for row_info in all_rows_seen[:15]:
+            if row_info['first_cell'] and row_info['first_cell'].isdigit():
+                sr = int(row_info['first_cell'])
+                if 1 <= sr <= 10:
+                    status = "✅ PROCESSED" if not row_info['in_processed'] else "⚠️ DUPLICATE"
+                    if row_info['row_len'] < 10:
+                        status = "❌ SKIPPED (len < 10)"
+                    elif not row_info['is_digit']:
+                        status = "❌ SKIPPED (not digit)"
+                    
+                    st.write(f"Row {sr}: Page {row_info['page']}, Len={row_info['row_len']}, {status}")
     
     # Add summary rows - extract from PDF
     # Summary can be on any page, so search all pages
