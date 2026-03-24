@@ -16,10 +16,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
     
     all_rows = []
     
-    # DEBUG - Track all rows seen across all pages
-    import streamlit as st
-    all_rows_seen = []
-    
     # Extract header info
     header_data = {
         "PO No": "",
@@ -126,16 +122,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
             for table in tables:
                 for row_idx, row in enumerate(table):
                     first_cell = str(row[0] or "").strip()
-                    
-                    # DEBUG - Log every row
-                    all_rows_seen.append({
-                        'page': page_num + 1,
-                        'row_idx': row_idx,
-                        'first_cell': first_cell,
-                        'row_len': len(row),
-                        'is_digit': first_cell.isdigit() if first_cell else False,
-                        'in_processed': first_cell in processed_sr_nos
-                    })
                     
                     if not row or len(row) < 10:
                         continue
@@ -295,25 +281,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     ])
                     
                     processed_sr_nos.add(sr_no)
-    
-    # DEBUG - Show all rows seen
-    import streamlit as st
-    with st.expander("🔍 All Rows Seen (Debug)", expanded=True):
-        st.write(f"Total rows encountered: {len(all_rows_seen)}")
-        st.write(f"Total data rows processed: {len(all_rows)}")
-        
-        # Show rows 1-10
-        for row_info in all_rows_seen[:15]:
-            if row_info['first_cell'] and row_info['first_cell'].isdigit():
-                sr = int(row_info['first_cell'])
-                if 1 <= sr <= 10:
-                    status = "✅ PROCESSED" if not row_info['in_processed'] else "⚠️ DUPLICATE"
-                    if row_info['row_len'] < 10:
-                        status = "❌ SKIPPED (len < 10)"
-                    elif not row_info['is_digit']:
-                        status = "❌ SKIPPED (not digit)"
-                    
-                    st.write(f"Row {sr}: Page {row_info['page']}, Len={row_info['row_len']}, {status}")
     
     # Add summary rows - extract from PDF
     # Summary can be on any page, so search all pages
