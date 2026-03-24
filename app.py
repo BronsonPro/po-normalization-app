@@ -778,6 +778,14 @@ if po_df is not None and master_df is not None:
         if party == "Scootsy":
             merged = po.merge(master, on="Item Code", how="left", suffixes=("_PO", "_MASTER"))
             merged["Product Name"] = merged["Product Name_MASTER"].fillna(merged["Product Name_PO"])
+
+            # DEBUG - Add these lines here
+            import streamlit as st
+            with st.expander("🔍 Product Name Merge Debug", expanded=True):
+                st.write("Merged columns:", list(merged.columns))
+                st.write("Sample row 0:")
+                st.write(merged.iloc[0][["Item Code", "Product Name_PO", "Product Name_MASTER", "Product Name"]])
+
         else:
             merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
 
