@@ -839,6 +839,11 @@ if po_df is not None and master_df is not None:
 
             # SCOOTSY FIX #4: Proper merge for Scootsy
             if party == "Scootsy":
+                # DEBUG
+                st.write("### Master columns for Scootsy merge:")
+                st.write(list(master.columns))
+                st.write("Sample master row:")
+                st.dataframe(master.head(1))
                 # Drop empty EAN from PO, then merge on Item Code
                 if "EAN" in po.columns:
                     po = po.drop(columns=["EAN"])
