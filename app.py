@@ -924,20 +924,6 @@ if po_df is not None and master_df is not None:
             filename = f"{safe_party}_{safe_po}.xlsx"
             final_path = os.path.join(tempfile.gettempdir(), filename)
 
-             # DEBUG
-            st.write("### Final Data Check")
-            st.write("upd columns:", list(upd.columns))
-            st.write("upd first row Product Name:", upd.iloc[0]["Product Name"] if "Product Name" in upd.columns else "NOT FOUND")
-            st.write("upd row 5 Product Name:", upd.iloc[4]["Product Name"] if len(upd) > 4 and "Product Name" in upd.columns else "NOT FOUND")
-            st.write("---")
-            st.write("final_raw columns:", list(final_raw.columns))
-            st.write("Looking for Product Name column in final_raw...")
-            for idx, col in enumerate(final_raw.columns):
-                if "product" in str(col).lower() and "name" in str(col).lower():
-                    st.write(f"Found at index {idx}: '{col}'")
-                    st.write(f"Row 0 value: {final_raw.iloc[table_header_row, idx]}")
-                    st.write(f"Row 5 value: {final_raw.iloc[table_header_row + 4, idx] if len(final_raw) > table_header_row + 4 else 'N/A'}")
-
             
             final_raw.to_excel(final_path, index=False, header=False)
 
