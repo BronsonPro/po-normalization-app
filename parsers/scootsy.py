@@ -243,6 +243,9 @@ def convert_pdf_to_excel(pdf_path, output_path):
             page_text = page.extract_text() or ""
             text_lines = page_text.split('\n')
             
+            import streamlit as st
+            text_matches_found = []
+            
             for line in text_lines:
                 # Look for lines that start with a number followed by item code pattern
                 # Pattern: "5 255618 Beautiliss Professional Classic Eyelash Curler ... 82142090 12 200.00 ..."
@@ -252,6 +255,14 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     item_code = match.group(2)
                     rest = match.group(3)
                     
+                    # DEBUG - Track matches
+                    if sr_no in ["5", "6"]:
+                        text_matches_found.append({
+                            'sr_no': sr_no,
+                            'line': line[:100],
+                            'rest': rest[:50]
+                        })
+                    
                     # Check if this row was already processed with full product name
                     # If product name in all_rows for this sr_no is just one word, update it
                     row_found = False
@@ -259,6 +270,12 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         if existing_row[0] == sr_no:  # Match by serial number
                             # Check if product name is truncated (single word, typically brand name only)
                             existing_product_name = existing_row[3]
+                            
+                            # DEBUG
+                            if sr_no in ["5", "6"]:
+                                text_matches_found[-1]['existing_name'] = existing_product_name
+                                text_matches_found[-1]['word_count'] = len(existing_product_name.split())
+                            
                             if existing_product_name and len(existing_product_name.split()) <= 2:
                                 # Extract full product name from text
                                 # Product name is between item code and HSN (8-digit number)
@@ -268,10 +285,20 @@ def convert_pdf_to_excel(pdf_path, output_path):
                                     full_product_name = rest[:hsn_pos].strip()
                                     # Clean up product name - remove extra spaces and line breaks
                                     full_product_name = ' '.join(full_product_name.split())
+                                    
+                                    # DEBUG
+                                    if sr_no in ["5", "6"]:
+                                        text_matches_found[-1]['new_name'] = full_product_name
+                                        text_matches_found[-1]['updated'] = True
+                                    
                                     # Update the product name in existing row
                                     all_rows[idx][3] = full_product_name
                             row_found = True
                             break
+                    
+                    if sr_no in ["5", "6"] and text_matches_found and 'updated' not in text_matches_found[-1]:
+                        text_matches_found[-1]['updated'] = False
+                        text_matches_found[-1]['reason'] = 'row_found' if row_found else 'not_found'
                     
                     # If row wasn't found in table extraction, add it now
                     if not row_found and sr_no not in processed_sr_nos:
@@ -341,6 +368,19 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         ])
                         
                         processed_sr_nos.add(sr_no)
+            
+            # DEBUG - Show text fallback results
+            if text_matches_found:
+                with st.expander("🔍 Text Fallback Debug", expanded=True):
+                    for match in text_matches_found:
+                        st.write(f"Row {match['sr_no']}:")
+                        st.write(f"  Line: {match.get('line', 'N/A')}")
+                        st.write(f"  Existing name: '{match.get('existing_name', 'N/A')}'")
+                        st.write(f"  Word count: {match.get('word_count', 'N/A')}")
+                        st.write(f"  New name: '{match.get('new_name', 'NOT EXTRACTED')}'")
+                        st.write(f"  Updated: {match.get('updated', False)}")
+                        st.write(f"  Reason: {match.get('reason', 'N/A')}")
+                        st.write("---")
     
     # Add summary rows - extract from PDF
     # Summary can be on any page, so search all pages
