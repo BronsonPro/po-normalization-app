@@ -30,6 +30,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
     master_product_map = {}
     try:
         import os
+        import streamlit as st
         master_dir = os.path.dirname(pdf_path)
         master_path = os.path.join(master_dir, "Scootsy Master.xlsx")
         if not os.path.exists(master_path):
@@ -39,6 +40,14 @@ def convert_pdf_to_excel(pdf_path, output_path):
         
         if os.path.exists(master_path):
             master_df = pd.read_excel(master_path)
+            
+            # DEBUG - Show master file columns
+            with st.expander("🔍 Scootsy Master File Debug", expanded=True):
+                st.write("Master file found:", master_path)
+                st.write("Columns:", list(master_df.columns))
+                st.write("First row sample:")
+                st.write(master_df.head(1).to_dict('records'))
+            
             # Try both column name possibilities for EAN
             if 'Brand SKU Code' in master_df.columns and 'Item Code' in master_df.columns:
                 for _, row in master_df.iterrows():
@@ -121,6 +130,13 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         clean_lines.append(line.strip())
                     header_data["Shipping Address"] = ', '.join(clean_lines)[:250]
             
+            # DEBUG - Show shipping address extraction
+            import streamlit as st
+            with st.expander("🔍 Shipping Address Debug", expanded=True):
+                st.write(f"Shipping Address from table: '{header_data['Shipping Address']}'")
+                st.write(f"First page text (first 500 chars):")
+                st.text(first_page_text[:500])
+            
             # Fallback: Extract shipping address from first page text if not found in table
             if not header_data["Shipping Address"]:
                 # Look for "Ship To:" or "Consignee:" section
@@ -130,6 +146,10 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     # Clean up - take first few lines
                     addr_lines = [line.strip() for line in addr_text.split('\n') if line.strip()][:5]
                     header_data["Shipping Address"] = ', '.join(addr_lines)[:250]
+                    
+                    # DEBUG
+                    with st.expander("🔍 Shipping Address Fallback", expanded=True):
+                        st.write(f"Fallback extracted: '{header_data['Shipping Address']}'")
             
             # Fallback: Try to extract GSTIN from first page text if not found
             if not header_data["GST No"]:
