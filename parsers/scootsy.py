@@ -171,6 +171,19 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         cgst_val = float(cgst_rate) if cgst_rate and cgst_rate.replace('.','').replace('-','').isdigit() else 0
                         sgst_val = float(sgst_rate) if sgst_rate and sgst_rate.replace('.','').replace('-','').isdigit() else 0
                         
+                        # DEBUG - Show GST values for row 3
+                        import streamlit as st
+                        if sr_no == "3":
+                            with st.expander("🔍 Row 3 GST Debug", expanded=True):
+                                st.write(f"Row length: {len(row)}")
+                                st.write(f"has_extra_column: {has_extra_column}")
+                                st.write(f"CGST Rate raw: '{cgst_rate}'")
+                                st.write(f"SGST Rate raw: '{sgst_rate}'")
+                                st.write(f"IGST Rate raw: '{igst_rate}'")
+                                st.write(f"CGST val: {cgst_val}")
+                                st.write(f"SGST val: {sgst_val}")
+                                st.write(f"IGST val: {igst_val}")
+                        
                         if igst_val > 0:
                             gst_rate = str(int(igst_val))  # IGST
                         elif cgst_val > 0 or sgst_val > 0:
