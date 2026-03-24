@@ -105,7 +105,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     header_data["GST No"] = gstin_match.group(1)
             
             for table in tables:
-                for row in table:
+                for row_idx, row in enumerate(table):
                     if not row or len(row) < 10:
                         continue
                     
@@ -114,12 +114,12 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     if not first_cell or not first_cell.isdigit():
                         continue
                     
-                    # Extract data from correct columns with defensive length checks
-                    # Column mapping (pdfplumber adds extra None at index 9):
-                    # 0=Sr, 1=Item Code, 2=Product, 3=HSN, 4=Qty, 5=MRP, 6=Base Cost, 7=Taxable Value,
-                    # 8=CGST Rate, 9=None(!), 10=CGST Amt, 11=SGST Rate, 12=SGST Amt, 
-                    # 13=IGST Rate, 14=IGST Amt, 15=CESS Rate, 16=CESS Amt, 17=?, 18=Total
+                    # Detect table format based on row length
+                    # Page 1: 19 columns with None at index 9
+                    # Page 2+: 18 columns without the None
+                    has_extra_column = len(row) >= 19
                     
+                    # Extract data from correct columns with defensive length checks
                     sr_no = first_cell
                     item_code = str(row[1] or "").strip() if len(row) > 1 else ""
                     product_name = str(row[2] or "").strip().replace('\n', ' ') if len(row) > 2 else ""
@@ -128,26 +128,38 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     mrp = str(row[5] or "").strip() if len(row) > 5 else ""
                     base_rate = str(row[6] or "").strip() if len(row) > 6 else ""
                     
-                    # GST Rate - adjusted for extra None column
-                    cgst_rate = str(row[8] or "").strip() if len(row) > 8 else ""
-                    sgst_rate = str(row[11] or "").strip() if len(row) > 11 else ""  # Shifted by 1
-                    igst_rate = str(row[13] or "").strip() if len(row) > 13 else ""  # Shifted by 1
+                    # GST Rate - indices depend on table format
+                    if has_extra_column:
+                        # 19-column format (page 1): None at index 9, everything shifted by 1
+                        cgst_rate = str(row[8] or "").strip() if len(row) > 8 else ""
+                        sgst_rate = str(row[11] or "").strip() if len(row) > 11 else ""
+                        igst_rate = str(row[13] or "").strip() if len(row) > 13 else ""
+                        total = str(row[18] or "").strip() if len(row) > 18 else ""
+                    else:
+                        # 18-column format (page 2+): No extra None column
+                        cgst_rate = str(row[8] or "").strip() if len(row) > 8 else ""
+                        sgst_rate = str(row[10] or "").strip() if len(row) > 10 else ""
+                        igst_rate = str(row[12] or "").strip() if len(row) > 12 else ""
+                        total = str(row[17] or "").strip() if len(row) > 17 else ""
                     
                     # Use IGST if present, otherwise CGST+SGST
                     gst_rate = ""
                     try:
-                        if igst_rate and float(igst_rate) > 0:
-                            gst_rate = str(int(float(igst_rate)))  # IGST
+                        # Convert to float and check
+                        igst_val = float(igst_rate) if igst_rate and igst_rate.replace('.','').replace('-','').isdigit() else 0
+                        cgst_val = float(cgst_rate) if cgst_rate and cgst_rate.replace('.','').replace('-','').isdigit() else 0
+                        sgst_val = float(sgst_rate) if sgst_rate and sgst_rate.replace('.','').replace('-','').isdigit() else 0
+                        
+                        if igst_val > 0:
+                            gst_rate = str(int(igst_val))  # IGST
+                        elif cgst_val > 0 or sgst_val > 0:
+                            gst_rate = str(int(cgst_val + sgst_val))  # CGST + SGST
                         else:
-                            # CGST + SGST
-                            cgst_val = float(cgst_rate) if cgst_rate else 0
-                            sgst_val = float(sgst_rate) if sgst_rate else 0
-                            gst_rate = str(int(cgst_val + sgst_val))
-                    except:
+                            # All are 0, leave blank
+                            gst_rate = ""
+                    except Exception as e:
+                        # If conversion fails, leave blank
                         gst_rate = ""
-                    
-                    # Total column at index 18
-                    total = str(row[18] or "").strip() if len(row) > 18 else ""
                     
                     # Map Item Code to EAN if available from master
                     item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
