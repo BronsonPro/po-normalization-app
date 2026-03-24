@@ -786,6 +786,10 @@ if po_df is not None and master_df is not None:
             st.write("Sample row 0:")
             st.dataframe(merged.iloc[0:1][["Item Code", "Product Name_PO", "Product Name_MASTER", "Product Name"]])
             st.write("---")
+            # DEBUG - Check row 5 specifically
+            st.write("### Row 5 Debug")
+            if len(merged) > 4:
+                st.dataframe(merged.iloc[4:5][["Item Code", "Product Name_PO", "Product Name_MASTER", "Product Name"]])
 
            
         else:
