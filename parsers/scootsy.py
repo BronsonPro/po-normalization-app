@@ -76,18 +76,22 @@ def convert_pdf_to_excel(pdf_path, output_path):
         # Extract table data from all pages
         for page_num, page in enumerate(pdf.pages):
             # For page 2+, use more lenient table extraction settings
-            # to capture rows at the top without borders
+            # to capture rows at the top without borders AND preserve multi-line text
             if page_num > 0:
                 # Use explicit vertical lines and snap tolerance to catch borderless rows
+                # keep_blank_chars=True preserves multi-line text within cells
                 tables = page.extract_tables(table_settings={
                     "vertical_strategy": "text",
                     "horizontal_strategy": "text",
                     "snap_tolerance": 5,
                     "join_tolerance": 5,
-                    "edge_min_length": 10
+                    "edge_min_length": 10,
+                    "keep_blank_chars": True
                 })
             else:
-                tables = page.extract_tables()
+                tables = page.extract_tables(table_settings={
+                    "keep_blank_chars": True
+                })
             
             if not tables:
                 continue
