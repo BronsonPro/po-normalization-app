@@ -777,6 +777,7 @@ if po_df is not None and master_df is not None:
         # Validation merge
         if party == "Scootsy":
             merged = po.merge(master, on="Item Code", how="left", suffixes=("_PO", "_MASTER"))
+            merged["Product Name"] = merged["Product Name_MASTER"].fillna(merged["Product Name_PO"])
         else:
             merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
 
