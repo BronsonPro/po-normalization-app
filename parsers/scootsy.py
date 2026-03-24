@@ -53,8 +53,8 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 for _, row in master_df.iterrows():
                     item_code = str(int(float(row['Item Code']))) if pd.notna(row['Item Code']) else None
                     ean = str(int(float(row['Brand SKU Code']))) if pd.notna(row['Brand SKU Code']) else None
-                    # Also get product name from master
-                    product_name = str(row['Product Name']) if pd.notna(row.get('Product Name')) else None
+                    # Product name is in 'SKU Name' column
+                    product_name = str(row['SKU Name']) if pd.notna(row.get('SKU Name')) else None
                     if item_code:
                         if ean:
                             master_ean_map[item_code] = ean
@@ -64,8 +64,8 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 for _, row in master_df.iterrows():
                     item_code = str(int(float(row['Item Code']))) if pd.notna(row['Item Code']) else None
                     ean = str(int(float(row['EAN']))) if pd.notna(row['EAN']) else None
-                    # Also get product name from master
-                    product_name = str(row['Product Name']) if pd.notna(row.get('Product Name')) else None
+                    # Product name is in 'SKU Name' column
+                    product_name = str(row['SKU Name']) if pd.notna(row.get('SKU Name')) else None
                     if item_code:
                         if ean:
                             master_ean_map[item_code] = ean
@@ -112,50 +112,68 @@ def convert_pdf_to_excel(pdf_path, output_path):
             if not tables:
                 continue
             
-            # Extract shipping address from table (cleaner than text extraction)
-            for row in tables[0]:
-                if row and len(row) > 9 and row[9] and 'PJTJ' in str(row[9]) and not header_data["Shipping Address"]:
-                    addr_lines = str(row[9]).split('\n')
-                    # Take lines before Contact and GSTIN
-                    clean_lines = []
-                    for line in addr_lines:
-                        if 'GSTIN' in line or 'GST' in line:
-                            # Extract GSTIN number - try multiple patterns
-                            gstin_match = re.search(r'(?:GSTIN|GST)[:\s-]*([A-Z0-9]{15})', line, re.IGNORECASE)
-                            if gstin_match:
-                                header_data["GST No"] = gstin_match.group(1)
-                            break
-                        if 'Contact' in line:
-                            break
-                        clean_lines.append(line.strip())
-                    header_data["Shipping Address"] = ', '.join(clean_lines)[:250]
-            
-            # DEBUG - Show shipping address extraction
-            import streamlit as st
-            with st.expander("🔍 Shipping Address Debug", expanded=True):
-                st.write(f"Shipping Address from table: '{header_data['Shipping Address']}'")
+            # Extract shipping address from first page table only
+            if page_num == 0:
+                for row in tables[0]:
+                    if row and len(row) > 9 and row[9] and 'PJTJ' in str(row[9]) and not header_data["Shipping Address"]:
+                        addr_lines = str(row[9]).split('\n')
+                        # Take lines before Contact and GSTIN
+                        clean_lines = []
+                        for line in addr_lines:
+                            if 'GSTIN' in line or 'GST' in line:
+                                # Extract GSTIN number - try multiple patterns
+                                gstin_match = re.search(r'(?:GSTIN|GST)[:\s-]*([A-Z0-9]{15})', line, re.IGNORECASE)
+                                if gstin_match:
+                                    header_data["GST No"] = gstin_match.group(1)
+                                break
+                            if 'Contact' in line:
+                                break
+                            clean_lines.append(line.strip())
+                        header_data["Shipping Address"] = ', '.join(clean_lines)[:250]
+        
+        # Fallback: Try to extract GSTIN from first page text if not found
+        if not header_data["GST No"]:
+            gstin_match = re.search(r'(?:GSTIN|GST)[:\s-]*([A-Z0-9]{15})', first_page_text, re.IGNORECASE)
+            if gstin_match:
+                header_data["GST No"] = gstin_match.group(1)
+        
+        # Fallback: Extract shipping address from first page text if not found in table
+        if not header_data["Shipping Address"]:
+            # Look for "Ship To:" or "Consignee:" section
+            ship_match = re.search(r'(?:Ship To|Consignee)[:.\s]+(.*?)(?:GSTIN|Contact|PO)', first_page_text, re.DOTALL | re.IGNORECASE)
+            if ship_match:
+                addr_text = ship_match.group(1).strip()
+                # Clean up - take first few lines
+                addr_lines = [line.strip() for line in addr_text.split('\n') if line.strip()][:5]
+                header_data["Shipping Address"] = ', '.join(addr_lines)[:250]
+        
+        # DEBUG - Show shipping address extraction (only once after all pages processed)
+        import streamlit as st
+        with st.expander("🔍 Shipping Address Debug", expanded=True):
+            st.write(f"Shipping Address extracted: '{header_data['Shipping Address']}'")
+            st.write(f"GST No extracted: '{header_data['GST No']}'")
+            if not header_data["Shipping Address"]:
                 st.write(f"First page text (first 500 chars):")
                 st.text(first_page_text[:500])
+        
+        # Extract table data from all pages (second pass for data rows)
+        for page_num, page in enumerate(pdf.pages):
+            # For page 2+, use more lenient table extraction settings
+            # to capture rows at the top without borders
+            if page_num > 0:
+                # Use explicit vertical lines and snap tolerance to catch borderless rows
+                tables = page.extract_tables(table_settings={
+                    "vertical_strategy": "text",
+                    "horizontal_strategy": "text",
+                    "snap_tolerance": 5,
+                    "join_tolerance": 5,
+                    "edge_min_length": 10
+                })
+            else:
+                tables = page.extract_tables()
             
-            # Fallback: Extract shipping address from first page text if not found in table
-            if not header_data["Shipping Address"]:
-                # Look for "Ship To:" or "Consignee:" section
-                ship_match = re.search(r'(?:Ship To|Consignee)[:.\s]+(.*?)(?:GSTIN|Contact|PO)', first_page_text, re.DOTALL | re.IGNORECASE)
-                if ship_match:
-                    addr_text = ship_match.group(1).strip()
-                    # Clean up - take first few lines
-                    addr_lines = [line.strip() for line in addr_text.split('\n') if line.strip()][:5]
-                    header_data["Shipping Address"] = ', '.join(addr_lines)[:250]
-                    
-                    # DEBUG
-                    with st.expander("🔍 Shipping Address Fallback", expanded=True):
-                        st.write(f"Fallback extracted: '{header_data['Shipping Address']}'")
-            
-            # Fallback: Try to extract GSTIN from first page text if not found
-            if not header_data["GST No"]:
-                gstin_match = re.search(r'(?:GSTIN|GST)[:\s-]*([A-Z0-9]{15})', first_page_text, re.IGNORECASE)
-                if gstin_match:
-                    header_data["GST No"] = gstin_match.group(1)
+            if not tables:
+                continue
             
             # Track which serial numbers we've processed
             processed_sr_nos = set()
