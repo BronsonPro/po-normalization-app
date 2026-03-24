@@ -239,87 +239,108 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     ])
             
             # FALLBACK: Extract rows from text that weren't captured in tables
-            # This handles rows at page tops without borders
+            # This handles rows at page tops without borders AND fixes truncated product names
             page_text = page.extract_text() or ""
             text_lines = page_text.split('\n')
             
             for line in text_lines:
                 # Look for lines that start with a number followed by item code pattern
-                # Pattern: "5 380147 Product Name 96032900 48 550.00 ..."
+                # Pattern: "5 255618 Beautiliss Professional Classic Eyelash Curler ... 82142090 12 200.00 ..."
                 match = re.match(r'^(\d+)\s+(\d{6})\s+(.+)', line)
                 if match:
                     sr_no = match.group(1)
+                    item_code = match.group(2)
+                    rest = match.group(3)
                     
-                    # Skip if already processed from table extraction
-                    if sr_no in processed_sr_nos:
-                        continue
-                    
-                    # Try to parse the entire line as space-separated values
-                    parts = line.split()
-                    if len(parts) < 10:
-                        continue
-                    
-                    # Extract fields (this is approximate - adjust indices as needed)
-                    item_code = parts[1] if len(parts) > 1 else ""
-                    
-                    # Product name spans multiple parts until HSN (8-digit number)
-                    product_parts = []
-                    hsn_idx = -1
-                    for i in range(2, len(parts)):
-                        if len(parts[i]) == 8 and parts[i].isdigit():
-                            hsn = parts[i]
-                            hsn_idx = i
+                    # Check if this row was already processed with full product name
+                    # If product name in all_rows for this sr_no is just one word, update it
+                    row_found = False
+                    for idx, existing_row in enumerate(all_rows):
+                        if existing_row[0] == sr_no:  # Match by serial number
+                            # Check if product name is truncated (single word, typically brand name only)
+                            existing_product_name = existing_row[3]
+                            if existing_product_name and len(existing_product_name.split()) <= 2:
+                                # Extract full product name from text
+                                # Product name is between item code and HSN (8-digit number)
+                                hsn_match = re.search(r'(\d{8})', rest)
+                                if hsn_match:
+                                    hsn_pos = hsn_match.start()
+                                    full_product_name = rest[:hsn_pos].strip()
+                                    # Clean up product name - remove extra spaces and line breaks
+                                    full_product_name = ' '.join(full_product_name.split())
+                                    # Update the product name in existing row
+                                    all_rows[idx][3] = full_product_name
+                            row_found = True
                             break
-                        product_parts.append(parts[i])
                     
-                    if hsn_idx == -1:
-                        continue
-                    
-                    product_name = ' '.join(product_parts)
-                    
-                    # After HSN: Qty, MRP, Base Cost, Taxable Value, GST rates, Total
-                    remaining = parts[hsn_idx + 1:]
-                    if len(remaining) < 8:
-                        continue
-                    
-                    qty = remaining[0] if len(remaining) > 0 else ""
-                    mrp = remaining[1] if len(remaining) > 1 else ""
-                    base_rate = remaining[2] if len(remaining) > 2 else ""
-                    
-                    # Try to find IGST rate (usually around index 6-8 in remaining)
-                    # This is approximate - the exact index depends on format
-                    igst_rate = ""
-                    for val in remaining[5:10]:
-                        try:
-                            if float(val) > 0 and float(val) <= 28:  # GST rates are 0-28%
-                                igst_rate = val
-                                break
-                        except:
+                    # If row wasn't found in table extraction, add it now
+                    if not row_found and sr_no not in processed_sr_nos:
+                        # Try to parse the entire line as space-separated values
+                        parts = line.split()
+                        if len(parts) < 10:
                             continue
-                    
-                    gst_rate = str(int(float(igst_rate))) if igst_rate else ""
-                    
-                    # Total is usually the last value
-                    total = remaining[-1] if remaining else ""
-                    
-                    # Map Item Code to EAN
-                    item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
-                    ean = master_ean_map.get(item_code_clean, "")
-                    
-                    all_rows.append([
-                        sr_no,
-                        ean,
-                        item_code,
-                        product_name,
-                        hsn,
-                        qty,
-                        mrp,
-                        base_rate,
-                        gst_rate,
-                        total
-                    ])
-                    
-                    processed_sr_nos.add(sr_no)
+                        
+                        # Extract fields (this is approximate - adjust indices as needed)
+                        item_code = parts[1] if len(parts) > 1 else ""
+                        
+                        # Product name spans multiple parts until HSN (8-digit number)
+                        product_parts = []
+                        hsn_idx = -1
+                        for i in range(2, len(parts)):
+                            if len(parts[i]) == 8 and parts[i].isdigit():
+                                hsn = parts[i]
+                                hsn_idx = i
+                                break
+                            product_parts.append(parts[i])
+                        
+                        if hsn_idx == -1:
+                            continue
+                        
+                        product_name = ' '.join(product_parts)
+                        
+                        # After HSN: Qty, MRP, Base Cost, Taxable Value, GST rates, Total
+                        remaining = parts[hsn_idx + 1:]
+                        if len(remaining) < 8:
+                            continue
+                        
+                        qty = remaining[0] if len(remaining) > 0 else ""
+                        mrp = remaining[1] if len(remaining) > 1 else ""
+                        base_rate = remaining[2] if len(remaining) > 2 else ""
+                        
+                        # Try to find IGST rate (usually around index 6-8 in remaining)
+                        # This is approximate - the exact index depends on format
+                        igst_rate = ""
+                        for val in remaining[5:10]:
+                            try:
+                                if float(val) > 0 and float(val) <= 28:  # GST rates are 0-28%
+                                    igst_rate = val
+                                    break
+                            except:
+                                continue
+                        
+                        gst_rate = str(int(float(igst_rate))) if igst_rate else ""
+                        
+                        # Total is usually the last value
+                        total = remaining[-1] if remaining else ""
+                        
+                        # Map Item Code to EAN
+                        item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
+                        ean = master_ean_map.get(item_code_clean, "")
+                        
+                        all_rows.append([
+                            sr_no,
+                            ean,
+                            item_code,
+                            product_name,
+                            hsn,
+                            qty,
+                            mrp,
+                            base_rate,
+                            gst_rate,
+                            total
+                        ])
+                        
+                        processed_sr_nos.add(sr_no)
     
     # Add summary rows - extract from PDF
     # Summary can be on any page, so search all pages
