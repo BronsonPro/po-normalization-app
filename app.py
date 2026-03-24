@@ -937,6 +937,19 @@ if po_df is not None and master_df is not None:
             filename = f"{safe_party}_{safe_po}.xlsx"
             final_path = os.path.join(tempfile.gettempdir(), filename)
 
+
+            # Update Product Name in final_raw with the corrected values from upd
+            if party == "Scootsy" and "Product Name" in upd.columns:
+                # Map the corrected product names back to final_raw based on row position
+                # Assuming final_raw data rows start after table_header_row
+                for idx, row_idx in enumerate(range(table_header_row, len(final_raw))):
+                    if idx < len(upd):
+                        # Find the Product Name column in final_raw
+                        for col_idx, col_name in enumerate(final_raw.columns):
+                            if "product" in str(col_name).lower() and "name" in str(col_name).lower():
+                                final_raw.iloc[row_idx, col_idx] = upd.iloc[idx]["Product Name"]
+                                break
+            
             final_raw.to_excel(final_path, index=False, header=False)
 
             from openpyxl import load_workbook
