@@ -129,7 +129,8 @@ def convert_pdf_to_excel(pdf_path, output_path):
                             if 'Contact' in line:
                                 break
                             clean_lines.append(line.strip())
-                        header_data["Shipping Address"] = ', '.join(clean_lines)[:250]
+                        # Store full address - don't truncate
+                        header_data["Shipping Address"] = ', '.join(clean_lines)
         
         # Fallback: Try to extract GSTIN from first page text if not found
         if not header_data["GST No"]:
@@ -146,10 +147,9 @@ def convert_pdf_to_excel(pdf_path, output_path):
             
             if ship_match:
                 addr_text = ship_match.group(1).strip()
-                # Clean up - take first few lines, remove extra spaces
-                addr_lines = [line.strip() for line in addr_text.split('\n') if line.strip()]
-                # Join first 6 lines (company name + address lines)
-                header_data["Shipping Address"] = ' '.join(addr_lines[:6])[:250]
+                # Store full address - don't truncate
+                # Later processing in app.py will extract pincode from this
+                header_data["Shipping Address"] = addr_text
         
         # DEBUG - Show shipping address extraction (only once after all pages processed)
         import streamlit as st
