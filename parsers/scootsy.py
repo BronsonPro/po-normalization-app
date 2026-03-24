@@ -110,6 +110,16 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         clean_lines.append(line.strip())
                     header_data["Shipping Address"] = ', '.join(clean_lines)[:250]
             
+            # Fallback: Extract shipping address from first page text if not found in table
+            if not header_data["Shipping Address"]:
+                # Look for "Ship To:" or "Consignee:" section
+                ship_match = re.search(r'(?:Ship To|Consignee)[:.\s]+(.*?)(?:GSTIN|Contact|PO)', first_page_text, re.DOTALL | re.IGNORECASE)
+                if ship_match:
+                    addr_text = ship_match.group(1).strip()
+                    # Clean up - take first few lines
+                    addr_lines = [line.strip() for line in addr_text.split('\n') if line.strip()][:5]
+                    header_data["Shipping Address"] = ', '.join(addr_lines)[:250]
+            
             # Fallback: Try to extract GSTIN from first page text if not found
             if not header_data["GST No"]:
                 gstin_match = re.search(r'(?:GSTIN|GST)[:\s-]*([A-Z0-9]{15})', first_page_text, re.IGNORECASE)
@@ -144,6 +154,16 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     sr_no = first_cell
                     item_code = str(row[1] or "").strip() if len(row) > 1 else ""
                     product_name = str(row[2] or "").strip().replace('\n', ' ') if len(row) > 2 else ""
+                    
+                    # DEBUG - Show product name for page 2 rows
+                    import streamlit as st
+                    if sr_no in ["5", "6"] and len(row) < 19:  # Page 2 rows
+                        with st.expander(f"🔍 Row {sr_no} Product Name Debug", expanded=True):
+                            st.write(f"Row length: {len(row)}")
+                            st.write(f"Row[2] raw: '{row[2]}'")
+                            st.write(f"Product name extracted: '{product_name}'")
+                            st.write(f"First 5 cells: {row[:5]}")
+                    
                     hsn = str(row[3] or "").strip() if len(row) > 3 else ""
                     qty = str(row[4] or "").strip() if len(row) > 4 else ""
                     mrp = str(row[5] or "").strip() if len(row) > 5 else ""
