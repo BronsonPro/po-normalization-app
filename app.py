@@ -554,6 +554,8 @@ master_df = None
 if master_file:
     master_df = pd.read_excel(master_file)
     master_df.columns = master_df.columns.astype(str).str.strip()
+    master_df = normalize(master_df, is_master=True)  # ← ADD THIS LINE
+
 
 
 # ================== STEP 3 ==================
