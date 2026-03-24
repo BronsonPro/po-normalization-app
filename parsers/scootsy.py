@@ -106,11 +106,24 @@ def convert_pdf_to_excel(pdf_path, output_path):
             
             for table in tables:
                 for row_idx, row in enumerate(table):
+                    # DEBUG - Check what's happening with rows that might be skipped
+                    first_cell = str(row[0] or "").strip()
+                    
+                    import streamlit as st
+                    # Show debug for rows near the page break (rows 4-6)
+                    if first_cell in ["4", "5", "6"]:
+                        with st.expander(f"🔍 Debug Row {first_cell}", expanded=(first_cell == "5")):
+                            st.write(f"Row length: {len(row)}")
+                            st.write(f"First cell: '{first_cell}'")
+                            st.write(f"Is digit: {first_cell.isdigit()}")
+                            st.write(f"Passes len check (>= 10): {len(row) >= 10}")
+                            if len(row) < 20:
+                                st.write(f"Full row: {row}")
+                    
                     if not row or len(row) < 10:
                         continue
                     
                     # Check if it's a data row (first column is a number)
-                    first_cell = str(row[0] or "").strip()
                     if not first_cell or not first_cell.isdigit():
                         continue
                     
