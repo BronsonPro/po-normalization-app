@@ -166,23 +166,29 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     # Use IGST if present, otherwise CGST+SGST
                     gst_rate = ""
                     try:
-                        # Convert to float and check
-                        igst_val = float(igst_rate) if igst_rate and igst_rate.replace('.','').replace('-','').isdigit() else 0
-                        cgst_val = float(cgst_rate) if cgst_rate and cgst_rate.replace('.','').replace('-','').isdigit() else 0
-                        sgst_val = float(sgst_rate) if sgst_rate and sgst_rate.replace('.','').replace('-','').isdigit() else 0
+                        # Clean rate strings - extract just the numeric value
+                        # Handle formats like '9.00', '0 9.00', '0.00', etc.
+                        def clean_rate(rate_str):
+                            if not rate_str:
+                                return 0
+                            # Split on space and take the last numeric part
+                            parts = rate_str.strip().split()
+                            for part in reversed(parts):  # Check from right to left
+                                try:
+                                    val = float(part)
+                                    if val > 0:  # Return first positive value found
+                                        return val
+                                except:
+                                    continue
+                            # If no positive value found, try to convert the whole string
+                            try:
+                                return float(rate_str.strip())
+                            except:
+                                return 0
                         
-                        # DEBUG - Show GST values for row 3
-                        import streamlit as st
-                        if sr_no == "3":
-                            with st.expander("🔍 Row 3 GST Debug", expanded=True):
-                                st.write(f"Row length: {len(row)}")
-                                st.write(f"has_extra_column: {has_extra_column}")
-                                st.write(f"CGST Rate raw: '{cgst_rate}'")
-                                st.write(f"SGST Rate raw: '{sgst_rate}'")
-                                st.write(f"IGST Rate raw: '{igst_rate}'")
-                                st.write(f"CGST val: {cgst_val}")
-                                st.write(f"SGST val: {sgst_val}")
-                                st.write(f"IGST val: {igst_val}")
+                        igst_val = clean_rate(igst_rate)
+                        cgst_val = clean_rate(cgst_rate)
+                        sgst_val = clean_rate(sgst_rate)
                         
                         if igst_val > 0:
                             gst_rate = str(int(igst_val))  # IGST
