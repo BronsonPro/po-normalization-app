@@ -779,13 +779,15 @@ if po_df is not None and master_df is not None:
             merged = po.merge(master, on="Item Code", how="left", suffixes=("_PO", "_MASTER"))
             merged["Product Name"] = merged["Product Name_MASTER"].fillna(merged["Product Name_PO"])
 
-            # DEBUG - Add these lines here
+            # DEBUG - Persistent version
             import streamlit as st
-            with st.expander("🔍 Product Name Merge Debug", expanded=True):
-                st.write("Merged columns:", list(merged.columns))
-                st.write("Sample row 0:")
-                st.write(merged.iloc[0][["Item Code", "Product Name_PO", "Product Name_MASTER", "Product Name"]])
+            st.write("### 🔍 Product Name Merge Debug")
+            st.write("Merged columns:", list(merged.columns))
+            st.write("Sample row 0:")
+            st.dataframe(merged.iloc[0:1][["Item Code", "Product Name_PO", "Product Name_MASTER", "Product Name"]])
+            st.write("---")
 
+           
         else:
             merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
 
