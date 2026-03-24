@@ -25,8 +25,9 @@ def convert_pdf_to_excel(pdf_path, output_path):
         "GST No": ""
     }
     
-    # Try to load master file for EAN mapping
+    # Try to load master file for EAN and Product Name mapping
     master_ean_map = {}
+    master_product_map = {}
     try:
         import os
         master_dir = os.path.dirname(pdf_path)
@@ -38,21 +39,31 @@ def convert_pdf_to_excel(pdf_path, output_path):
         
         if os.path.exists(master_path):
             master_df = pd.read_excel(master_path)
-            # Try both column name possibilities
+            # Try both column name possibilities for EAN
             if 'Brand SKU Code' in master_df.columns and 'Item Code' in master_df.columns:
                 for _, row in master_df.iterrows():
                     item_code = str(int(float(row['Item Code']))) if pd.notna(row['Item Code']) else None
                     ean = str(int(float(row['Brand SKU Code']))) if pd.notna(row['Brand SKU Code']) else None
-                    if item_code and ean:
-                        master_ean_map[item_code] = ean
+                    # Also get product name from master
+                    product_name = str(row['Product Name']) if pd.notna(row.get('Product Name')) else None
+                    if item_code:
+                        if ean:
+                            master_ean_map[item_code] = ean
+                        if product_name:
+                            master_product_map[item_code] = product_name
             elif 'EAN' in master_df.columns and 'Item Code' in master_df.columns:
                 for _, row in master_df.iterrows():
                     item_code = str(int(float(row['Item Code']))) if pd.notna(row['Item Code']) else None
                     ean = str(int(float(row['EAN']))) if pd.notna(row['EAN']) else None
-                    if item_code and ean:
-                        master_ean_map[item_code] = ean
+                    # Also get product name from master
+                    product_name = str(row['Product Name']) if pd.notna(row.get('Product Name')) else None
+                    if item_code:
+                        if ean:
+                            master_ean_map[item_code] = ean
+                        if product_name:
+                            master_product_map[item_code] = product_name
     except Exception as e:
-        # If master not found, EAN will be empty
+        # If master not found, EAN and Product Name will be empty/from PO
         pass
     
     with pdfplumber.open(pdf_path) as pdf:
@@ -154,16 +165,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     sr_no = first_cell
                     item_code = str(row[1] or "").strip() if len(row) > 1 else ""
                     product_name = str(row[2] or "").strip().replace('\n', ' ') if len(row) > 2 else ""
-                    
-                    # DEBUG - Show product name for page 2 rows
-                    import streamlit as st
-                    if sr_no in ["5", "6"] and len(row) < 19:  # Page 2 rows
-                        with st.expander(f"🔍 Row {sr_no} Product Name Debug", expanded=True):
-                            st.write(f"Row length: {len(row)}")
-                            st.write(f"Row[2] raw: '{row[2]}'")
-                            st.write(f"Product name extracted: '{product_name}'")
-                            st.write(f"First 5 cells: {row[:5]}")
-                    
                     hsn = str(row[3] or "").strip() if len(row) > 3 else ""
                     qty = str(row[4] or "").strip() if len(row) > 4 else ""
                     mrp = str(row[5] or "").strip() if len(row) > 5 else ""
@@ -221,15 +222,19 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         # If conversion fails, leave blank
                         gst_rate = ""
                     
-                    # Map Item Code to EAN if available from master
+                    # Map Item Code to EAN and Product Name from master if available
                     item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
                     ean = master_ean_map.get(item_code_clean, "")  # Get EAN from master map
+                    master_product_name = master_product_map.get(item_code_clean, "")  # Get Product Name from master
+                    
+                    # Use master product name if available, otherwise use PO product name
+                    final_product_name = master_product_name if master_product_name else product_name
                     
                     all_rows.append([
                         sr_no,
                         ean,  # EAN from master file lookup
                         item_code,
-                        product_name,
+                        final_product_name,  # Product name from master (preferred) or PO
                         hsn,
                         qty,
                         mrp,
@@ -243,9 +248,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
             # Use layout=True to preserve positioning and multi-line text
             page_text = page.extract_text(layout=True) or ""
             text_lines = page_text.split('\n')
-            
-            import streamlit as st
-            text_matches_found = []
             
             for line_idx, line in enumerate(text_lines):
                 # Look for lines that start with a number followed by item code pattern
@@ -268,50 +270,13 @@ def convert_pdf_to_excel(pdf_path, output_path):
                             full_rest += ' ' + next_line.strip()
                         rest = full_rest
                     
-                    # DEBUG - Track matches
-                    if sr_no in ["5", "6"]:
-                        text_matches_found.append({
-                            'sr_no': sr_no,
-                            'line': line[:100],
-                            'rest': rest[:80]
-                        })
-                    
-                    # Check if this row was already processed with full product name
-                    # If product name in all_rows for this sr_no is just one word, update it
+                    # Check if this row was already processed
+                    # Product name from master will be used regardless, so no need to update
                     row_found = False
                     for idx, existing_row in enumerate(all_rows):
                         if existing_row[0] == sr_no:  # Match by serial number
-                            # Check if product name is truncated (single word, typically brand name only)
-                            existing_product_name = existing_row[3]
-                            
-                            # DEBUG
-                            if sr_no in ["5", "6"]:
-                                text_matches_found[-1]['existing_name'] = existing_product_name
-                                text_matches_found[-1]['word_count'] = len(existing_product_name.split())
-                            
-                            if existing_product_name and len(existing_product_name.split()) <= 2:
-                                # Extract full product name from text
-                                # Product name is between item code and HSN (8-digit number)
-                                hsn_match = re.search(r'(\d{8})', rest)
-                                if hsn_match:
-                                    hsn_pos = hsn_match.start()
-                                    full_product_name = rest[:hsn_pos].strip()
-                                    # Clean up product name - remove extra spaces and line breaks
-                                    full_product_name = ' '.join(full_product_name.split())
-                                    
-                                    # DEBUG
-                                    if sr_no in ["5", "6"]:
-                                        text_matches_found[-1]['new_name'] = full_product_name
-                                        text_matches_found[-1]['updated'] = True
-                                    
-                                    # Update the product name in existing row
-                                    all_rows[idx][3] = full_product_name
                             row_found = True
                             break
-                    
-                    if sr_no in ["5", "6"] and text_matches_found and 'updated' not in text_matches_found[-1]:
-                        text_matches_found[-1]['updated'] = False
-                        text_matches_found[-1]['reason'] = 'row_found' if row_found else 'not_found'
                     
                     # If row wasn't found in table extraction, add it now
                     if not row_found and sr_no not in processed_sr_nos:
@@ -363,15 +328,19 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         # Total is usually the last value
                         total = remaining[-1] if remaining else ""
                         
-                        # Map Item Code to EAN
+                        # Map Item Code to EAN and Product Name from master
                         item_code_clean = str(int(float(item_code))) if item_code and item_code.replace('.','').replace('-','').isdigit() else ""
                         ean = master_ean_map.get(item_code_clean, "")
+                        master_product_name = master_product_map.get(item_code_clean, "")
+                        
+                        # Use master product name if available
+                        final_product_name = master_product_name if master_product_name else product_name
                         
                         all_rows.append([
                             sr_no,
                             ean,
                             item_code,
-                            product_name,
+                            final_product_name,
                             hsn,
                             qty,
                             mrp,
@@ -381,19 +350,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         ])
                         
                         processed_sr_nos.add(sr_no)
-            
-            # DEBUG - Show text fallback results
-            if text_matches_found:
-                with st.expander("🔍 Text Fallback Debug", expanded=True):
-                    for match in text_matches_found:
-                        st.write(f"Row {match['sr_no']}:")
-                        st.write(f"  Line: {match.get('line', 'N/A')}")
-                        st.write(f"  Existing name: '{match.get('existing_name', 'N/A')}'")
-                        st.write(f"  Word count: {match.get('word_count', 'N/A')}")
-                        st.write(f"  New name: '{match.get('new_name', 'NOT EXTRACTED')}'")
-                        st.write(f"  Updated: {match.get('updated', False)}")
-                        st.write(f"  Reason: {match.get('reason', 'N/A')}")
-                        st.write("---")
     
     # Add summary rows - extract from PDF
     # Summary can be on any page, so search all pages
