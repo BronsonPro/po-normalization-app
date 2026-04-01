@@ -259,6 +259,9 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
         st.write(f"DEBUG po_date before format: '{po_date}'")
         st.write(f"DEBUG po_expiry_date before format: '{po_expiry_date}'")
 
+        po_date = st.session_state.get('po_date', '')
+        po_expiry_date = st.session_state.get('po_expiry_date', '')
+        
         formatted_po_date = format_date(po_date)
 
         # DEBUG  
