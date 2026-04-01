@@ -255,8 +255,16 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
                 except:
                     continue
             return fallback
+        # DEBUG
+        st.write(f"DEBUG po_date before format: '{po_date}'")
+        st.write(f"DEBUG po_expiry_date before format: '{po_expiry_date}'")
 
         formatted_po_date = format_date(po_date)
+
+        # DEBUG  
+        st.write(f"DEBUG formatted_po_date: '{formatted_po_date}'")
+        st.write(f"DEBUG formatted_expiry_date: '{formatted_expiry_date}'")
+        
         # If expiry date missing, default to 60 days from PO date
         from datetime import datetime, timedelta
         if not po_expiry_date or str(po_expiry_date).strip() in ["", "nan"]:
