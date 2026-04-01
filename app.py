@@ -900,8 +900,9 @@ if po_df is not None and master_df is not None:
                         continue
                     j = col_index_map[col]
                     val = upd.at[i, col]
-                    final_raw.iat[start_row + i, j] = format_2_dec(val) if col in money_cols else val
-
+                    #final_raw.iat[start_row + i, j] = format_2_dec(val) if col in money_cols else val
+                    formatted_val = format_2_dec(val) if col in money_cols else val
+                    final_raw.iat[start_row + i, j] = str(formatted_val) if formatted_val is not None else ""
             # SCOOTSY FIX #6: Remove Item Code column from final sheet
             if party == "Scootsy":
                 header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
