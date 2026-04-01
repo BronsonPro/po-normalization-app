@@ -440,7 +440,8 @@ def read_normalized_po_table(excel_path):
     # Stop at total row
     stop_words = ["total amount", "grand total", "total tax"]
     for i in range(len(df)):
-        row_text = " ".join(df.iloc[i].astype(str).str.lower().tolist())
+        row_text = " ".join(df.iloc[i].astype(str).tolist()).lower()
+        # row_text = " ".join(df.iloc[i].astype(str).str.lower().tolist())
         if any(word in row_text for word in stop_words):
             df = df.iloc[:i]
             break
