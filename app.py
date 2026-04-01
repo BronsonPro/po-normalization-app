@@ -1156,7 +1156,8 @@ if po_df is not None and master_df is not None:
             po_date = ""
             po_expiry_date = ""
             for i in range(table_header_row):
-                row_vals = final_raw.iloc[i].astype(str).str.lower().tolist()
+                #row_vals = final_raw.iloc[i].astype(str).str.lower().tolist()
+                row_vals = " ".join([str(x) for x in final_raw.iloc[i].fillna("").tolist()]).lower().split()
                 if "po date" in row_vals or "po_date" in row_vals:
                     try:
                         po_date = str(final_raw.iloc[i, 1]).strip()
@@ -1167,7 +1168,24 @@ if po_df is not None and master_df is not None:
                         po_expiry_date = str(final_raw.iloc[i, 1]).strip()
                     except:
                         pass
+            # Convert dates to dd-mm-yyyy format for Django
+            if po_date:
+                try:
+                    from datetime import datetime
+                    # Parse "Dec. 25, 2025" format
+                    parsed_date = datetime.strptime(po_date.replace(".", ""), "%b %d, %Y")
+                    po_date = parsed_date.strftime("%d-%m-%Y")
+                except:
+                    pass
             
+            if po_expiry_date:
+                try:
+                    from datetime import datetime
+                    # Parse "Jan. 9, 2026" format
+                    parsed_date = datetime.strptime(po_expiry_date.replace(".", ""), "%b %d, %Y")
+                    po_expiry_date = parsed_date.strftime("%d-%m-%Y")
+                except:
+                    pass
             st.session_state['po_date'] = po_date
             st.session_state['po_expiry_date'] = po_expiry_date
             st.rerun()
