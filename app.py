@@ -255,18 +255,8 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
                 except:
                     continue
             return fallback
-        # DEBUG
-        st.write(f"DEBUG po_date before format: '{po_date}'")
-        st.write(f"DEBUG po_expiry_date before format: '{po_expiry_date}'")
-
-        po_date = st.session_state.get('po_date', '')
-        po_expiry_date = st.session_state.get('po_expiry_date', '')
         
         formatted_po_date = format_date(po_date)
-
-        # DEBUG  
-        st.write(f"DEBUG formatted_po_date: '{formatted_po_date}'")
-        st.write(f"DEBUG formatted_expiry_date: '{formatted_expiry_date}'")
         
         # If expiry date missing, default to 60 days from PO date
         from datetime import datetime, timedelta
@@ -1180,25 +1170,7 @@ if po_df is not None and master_df is not None:
                         po_expiry_date = str(final_raw.iloc[i, 1]).strip()
                     except:
                         pass
-            # Convert dates to dd-mm-yyyy format for Django
-            if po_date:
-                try:
-                    from datetime import datetime
-                    # Parse "Dec. 25, 2025" format
-                    parsed_date = datetime.strptime(po_date.replace(".", ""), "%b %d, %Y")
-                    po_date = parsed_date.strftime("%d-%m-%Y")
-                except:
-                    pass
-            
-            if po_expiry_date:
-                try:
-                    from datetime import datetime
-                    # Parse "Jan. 9, 2026" format
-                    parsed_date = datetime.strptime(po_expiry_date.replace(".", ""), "%b %d, %Y")
-                    po_expiry_date = parsed_date.strftime("%d-%m-%Y")
-                except:
-                    pass
-            st.session_state['po_date'] = po_date
+                        st.session_state['po_date'] = po_date
             st.session_state['po_expiry_date'] = po_expiry_date
             st.rerun()
 
