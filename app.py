@@ -815,6 +815,16 @@ if po_df is not None and master_df is not None:
         reasons = []
         for _, r in merged.iterrows():
             issue = []
+
+            # Check if product exists in master (EAN or Item Code must match)
+            if party == "Scootsy":
+                if pd.isna(r.get("EAN_MASTER")) or r.get("EAN_MASTER") == "" or r.get("EAN_MASTER") == 0:
+                    issue.append("Product not in Master")
+            else:
+                if pd.isna(r.get("MRP_MASTER")) or r.get("MRP_MASTER") == 0:
+                    issue.append("Product not in Master")
+            
+            
             if party != "TataCliq":
                 if abs(r["MRP_PO"] - r["MRP_MASTER"]) > 0.01:
                     issue.append("MRP Mismatch")
