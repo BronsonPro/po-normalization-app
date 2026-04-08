@@ -205,6 +205,23 @@ PO Automation"""
 # ================== DJANGO UPLOAD ==================
 def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
     """Upload PO data to Django API"""
+
+    from datetime import datetime
+    
+    # Handle po_date
+    if po_date and str(po_date).strip() not in ['', 'nan']:
+        try:
+            # Try common formats and convert to DD-MM-YYYY
+            for fmt in ["%b %d, %Y", "%B %d, %Y", "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"]:
+                try:
+                    po_date = datetime.strptime(str(po_date).replace(".", "").strip(), fmt).strftime("%d-%m-%Y")
+                    break
+                except:
+                    continue
+        except:
+            pass
+    
+
     
     try:
         # Get already-processed dataframe from session state
