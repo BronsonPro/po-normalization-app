@@ -1191,7 +1191,21 @@ if po_df is not None and master_df is not None:
                         po_expiry_date = str(final_raw.iloc[i, 1]).strip()
                     except:
                         pass
-                        st.session_state['po_date'] = po_date
+            # Format dates to DD-MM-YYYY before storing
+            from datetime import datetime
+            
+            def quick_format_date(d):
+                if not d or str(d).strip() in ['', 'nan']:
+                    return ""
+                d = str(d).replace(".", "").strip()
+                for fmt in ["%b %d, %Y", "%B %d, %Y", "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"]:
+                    try:
+                        return datetime.strptime(d, fmt).strftime("%d-%m-%Y")
+                    except:
+                        pass
+                return d
+
+            st.session_state['po_date'] = po_date
             st.session_state['po_expiry_date'] = po_expiry_date
             st.rerun()
 
