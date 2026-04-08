@@ -41,6 +41,12 @@ def convert_pdf_to_excel(pdf_path, output_path):
         if os.path.exists(master_path):
             master_df = pd.read_excel(master_path)
             
+            # DEBUG - Show master file columns
+            with st.expander("🔍 Scootsy Master File Debug", expanded=True):
+                st.write("Master file found:", master_path)
+                st.write("Columns:", list(master_df.columns))
+                st.write("First row sample:")
+                st.write(master_df.head(1).to_dict('records'))
             
             # Try both column name possibilities for EAN
             if 'Brand SKU Code' in master_df.columns and 'Item Code' in master_df.columns:
@@ -145,7 +151,15 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 # Later processing in app.py will extract pincode from this
                 header_data["Shipping Address"] = addr_text
         
-                
+        # DEBUG - Show shipping address extraction (only once after all pages processed)
+        import streamlit as st
+        with st.expander("🔍 Shipping Address Debug", expanded=True):
+            st.write(f"Shipping Address extracted: '{header_data['Shipping Address']}'")
+            st.write(f"GST No extracted: '{header_data['GST No']}'")
+            if not header_data["Shipping Address"]:
+                st.write(f"First page text (first 500 chars):")
+                st.text(first_page_text[:500])
+        
         # Extract table data from all pages (second pass for data rows)
         for page_num, page in enumerate(pdf.pages):
             # For page 2+, use more lenient table extraction settings
@@ -171,6 +185,15 @@ def convert_pdf_to_excel(pdf_path, output_path):
             for table in tables:
                 for row_idx, row in enumerate(table):
                     first_cell = str(row[0] or "").strip()
+                    
+                    # DEBUG - Show row structure for pages 3+ (problematic pages)
+                    import streamlit as st
+                    if page_num >= 2 and first_cell.isdigit() and int(first_cell) <= 2:
+                        with st.expander(f"🔍 Page {page_num + 1} Row {first_cell} Structure", expanded=True):
+                            st.write(f"Row length: {len(row)}")
+                            st.write("Column values:")
+                            for i in range(min(20, len(row))):
+                                st.write(f"  Col[{i}]: '{row[i]}'")
                     
                     if not row or len(row) < 10:
                         continue
@@ -255,6 +278,18 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     ean = master_ean_map.get(item_code_clean, "")  # Get EAN from master map
                     master_product_name = master_product_map.get(item_code_clean, "")  # Get Product Name from master
                     
+                    # DEBUG - Show mapping for rows 5 and 6
+                    import streamlit as st
+                    if sr_no in ["5", "6"]:
+                        if not hasattr(st.session_state, 'scootsy_product_debug_shown'):
+                            with st.expander(f"🔍 Product Mapping Debug", expanded=True):
+                                st.write(f"Row {sr_no}:")
+                                st.write(f"  Item Code: '{item_code}' → Clean: '{item_code_clean}'")
+                                st.write(f"  PO Product Name: '{product_name}'")
+                                st.write(f"  Master Product Name: '{master_product_name}'")
+                                st.write(f"  EAN: '{ean}'")
+                                st.write(f"  Master map size: {len(master_product_map)} items")
+                            st.session_state.scootsy_product_debug_shown = True
                     
                     # Use master product name if available, otherwise use PO product name
                     final_product_name = master_product_name if master_product_name else product_name
