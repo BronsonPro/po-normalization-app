@@ -1159,7 +1159,7 @@ if po_df is not None and master_df is not None:
             po_expiry_date = ""
             for i in range(table_header_row):
                 #row_vals = final_raw.iloc[i].astype(str).str.lower().tolist()
-                row_vals = " ".join([str(x) for x in final_raw.iloc[i].fillna("").tolist()]).lower().split()
+                row_vals = " ".join([str(x) for x in final_raw.iloc[i].fillna("").tolist()]).lower()
                 if "po date" in row_vals or "po_date" in row_vals:
                     try:
                         po_date = str(final_raw.iloc[i, 1]).strip()
