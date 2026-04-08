@@ -833,6 +833,13 @@ if po_df is not None and master_df is not None:
                     issue.append("Base Rate Mismatch")
             if abs(r["GST %_PO"] - r["GST %_MASTER"]) > 0.01:
                 issue.append("GST % Mismatch")
+
+            # Add HSN Code check for all parties
+            hsn_po = str(r.get("HSN Code_PO", "")).strip().replace(".0", "")
+            hsn_master = str(r.get("HSN Code_MASTER", "")).strip().replace(".0", "")
+            if hsn_po and hsn_master and hsn_po != hsn_master:
+                issue.append("HSN Code Mismatch")
+        
             reasons.append(", ".join(issue))
 
         merged["Reason"] = reasons
@@ -840,13 +847,13 @@ if po_df is not None and master_df is not None:
 
         if not mismatch.empty:
             if party == "Nykaa":
-                report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
+                report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
             elif party == "TataCliq":
-                report = mismatch[["EAN", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
+                report = mismatch[["EAN", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
             elif party == "Scootsy":
-                report = mismatch[["Item Code", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
+                report = mismatch[["Item Code", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
             else:
-                report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "Reason"]]
+                report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
 
             report = report.round(2)
             path = os.path.join(tempfile.gettempdir(), "Mismatch_Report.xlsx")
