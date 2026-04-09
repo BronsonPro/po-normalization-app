@@ -114,8 +114,8 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         clean_lines = []
                         for line in addr_lines:
                             if 'GSTIN' in line or 'GST' in line:
-                                # Extract GSTIN number - try multiple patterns
-                                gstin_match = re.search(r'(?:GSTIN|GST)[:\s-]*([A-Z0-9]{15})', line, re.IGNORECASE)
+                                # Extract GSTIN number - use proper GSTIN format pattern
+                                gstin_match = re.search(r'(?:GSTIN|GST\s*No|GST)[:\s-]*([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})', line, re.IGNORECASE)
                                 if gstin_match:
                                     header_data["GST No"] = gstin_match.group(1)
                                 break
@@ -127,11 +127,18 @@ def convert_pdf_to_excel(pdf_path, output_path):
         
         # Fallback: Try to extract GSTIN from shipping address section of first page text
         if not header_data["GST No"]:
-            # Look specifically in shipping address section, not vendor details
+            # Try multiple patterns to find GSTIN
+            # Pattern 1: In shipping address section
             ship_section_match = re.search(r'Shipping Address\s+(.*?)(?:Vendor|PO\s+No|PO\s+Date)', first_page_text, re.DOTALL | re.IGNORECASE)
             if ship_section_match:
                 ship_section = ship_section_match.group(1)
-                gstin_match = re.search(r'(?:GSTIN|GST)[:\s-]*([A-Z0-9]{15})', ship_section, re.IGNORECASE)
+                gstin_match = re.search(r'(?:GSTIN|GST\s*No|GST)[:\s-]*([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})', ship_section, re.IGNORECASE)
+                if gstin_match:
+                    header_data["GST No"] = gstin_match.group(1)
+            
+            # Pattern 2: Anywhere in first page with "GST" label
+            if not header_data["GST No"]:
+                gstin_match = re.search(r'(?:GSTIN|GST\s*No|GST)[:\s-]*([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})', first_page_text, re.IGNORECASE)
                 if gstin_match:
                     header_data["GST No"] = gstin_match.group(1)
         
