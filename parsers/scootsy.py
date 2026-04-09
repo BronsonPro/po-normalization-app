@@ -226,34 +226,46 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         continue
                     processed_sr_nos.add(first_cell)
                     
-                    # Detect table format based on row length
+                    # Detect table format and check if HSN is missing
                     row_len = len(row)
+                    
+                    # Check if this is a 19-column page without HSN (detect by checking if col[3] looks like a number instead of HSN)
+                    col3_val = str(row[3] or "").strip() if row_len > 3 else ""
+                    has_no_hsn = (row_len == 19 and col3_val and col3_val.replace('.','').isdigit() and len(col3_val) < 8)
                     
                     # Extract data from correct columns
                     sr_no = first_cell
                     item_code = str(row[1] or "").strip() if row_len > 1 else ""
                     product_name = str(row[2] or "").strip().replace('\n', ' ') if row_len > 2 else ""
-                    hsn = str(row[3] or "").strip() if row_len > 3 else ""
-                    qty = str(row[4] or "").strip() if row_len > 4 else ""
                     
-                    # Handle MRP and Base Rate - they might be merged in column 5
-                    if row_len == 17:
-                        # 17-column format: MRP and Base Rate might be merged in column 5
-                        col5 = str(row[5] or "").strip() if row_len > 5 else ""
-                        col6 = str(row[6] or "").strip() if row_len > 6 else ""
-                        
-                        # Check if col5 contains two space-separated numbers (MRP + Base Rate)
-                        col5_parts = col5.split()
-                        if len(col5_parts) >= 2:
-                            mrp = col5_parts[0]
-                            base_rate = col5_parts[1]
-                        else:
-                            mrp = col5
-                            base_rate = col6
+                    if has_no_hsn:
+                        # 19-column format WITHOUT HSN - everything shifts left by 1
+                        hsn = ""  # HSN missing
+                        qty = str(row[3] or "").strip() if row_len > 3 else ""
+                        mrp = str(row[4] or "").strip() if row_len > 4 else ""
+                        base_rate = str(row[5] or "").strip() if row_len > 5 else ""
                     else:
-                        # Normal format
-                        mrp = str(row[5] or "").strip() if row_len > 5 else ""
-                        base_rate = str(row[6] or "").strip() if row_len > 6 else ""
+                        # Normal formats with HSN
+                        hsn = str(row[3] or "").strip() if row_len > 3 else ""
+                        qty = str(row[4] or "").strip() if row_len > 4 else ""
+                        
+                        # Handle MRP and Base Rate - they might be merged in column 5 for 17-column format
+                        if row_len == 17:
+                            col5 = str(row[5] or "").strip() if row_len > 5 else ""
+                            col6 = str(row[6] or "").strip() if row_len > 6 else ""
+                            
+                            # Check if col5 contains two space-separated numbers (MRP + Base Rate)
+                            col5_parts = col5.split()
+                            if len(col5_parts) >= 2:
+                                mrp = col5_parts[0]
+                                base_rate = col5_parts[1]
+                            else:
+                                mrp = col5
+                                base_rate = col6
+                        else:
+                            # Normal format
+                            mrp = str(row[5] or "").strip() if row_len > 5 else ""
+                            base_rate = str(row[6] or "").strip() if row_len > 6 else ""
                     
                     # GST Rate - indices depend on table format
                     if row_len == 19:
