@@ -128,10 +128,22 @@ def convert_pdf_to_excel(pdf_path, output_path):
         # Fallback: Try to extract GSTIN from shipping address section of first page text
         if not header_data["GST No"]:
             # Only search in shipping address section, NOT vendor section
-            # Look for shipping address block in the text
-            ship_section_match = re.search(r'Shipping Address\s+(.*?)(?:Vendor|PO\s+No|PO\s+Date|Terms)', first_page_text, re.DOTALL | re.IGNORECASE)
-            if ship_section_match:
-                ship_section = ship_section_match.group(1)
+            # Try multiple end markers to capture the full shipping block
+            ship_section = None
+            for end_marker in [r'Vendor\s+Details', r'Vendor', r'Terms\s+and\s+Conditions', r'PO\s+No']:
+                ship_match = re.search(r'Shipping Address[:\s]+(.*?)' + end_marker, first_page_text, re.DOTALL | re.IGNORECASE)
+                if ship_match:
+                    ship_section = ship_match.group(1)
+                    break
+            
+            # If still not found, try getting everything after "Shipping Address" for next 500 chars
+            if not ship_section:
+                ship_match = re.search(r'Shipping Address[:\s]+(.{1,500})', first_page_text, re.DOTALL | re.IGNORECASE)
+                if ship_match:
+                    ship_section = ship_match.group(1)
+            
+            if ship_section:
+                # Look for GSTIN in the shipping section
                 gstin_match = re.search(r'(?:GSTIN|GST\s*No|GST)[:\s-]*([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})', ship_section, re.IGNORECASE)
                 if gstin_match:
                     header_data["GST No"] = gstin_match.group(1)
