@@ -406,6 +406,12 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     item_code = match.group(2)
                     rest = match.group(3)
                     
+                    # DEBUG - Track row 16 specifically
+                    import streamlit as st
+                    if sr_no == "16":
+                        st.write(f"🔍 Fallback found Sr#16 on page {page_num + 1}")
+                        st.write(f"   Line: {line[:120]}")
+                    
                     # For page 2, product name might be on multiple lines
                     # Collect next few lines until we hit the HSN (8-digit number)
                     if page_num > 0:  # Page 2+
@@ -425,6 +431,11 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         if existing_row[0] == sr_no:  # Match by serial number
                             row_found = True
                             break
+                    
+                    # DEBUG for row 16
+                    if sr_no == "16":
+                        st.write(f"   Row found in all_rows: {row_found}")
+                        st.write(f"   Will process: {not row_found}")
                     
                     # If row wasn't found in table extraction, add it now
                     if not row_found:  # Removed the processed_sr_nos check - only check if row is actually in all_rows
