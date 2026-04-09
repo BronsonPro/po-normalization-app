@@ -132,11 +132,15 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         # Store full address - don't truncate
                         header_data["Shipping Address"] = ', '.join(clean_lines)
         
-        # Fallback: Try to extract GSTIN from first page text if not found
+        # Fallback: Try to extract GSTIN from shipping address section of first page text
         if not header_data["GST No"]:
-            gstin_match = re.search(r'(?:GSTIN|GST)[:\s-]*([A-Z0-9]{15})', first_page_text, re.IGNORECASE)
-            if gstin_match:
-                header_data["GST No"] = gstin_match.group(1)
+            # Look specifically in shipping address section, not vendor details
+            ship_section_match = re.search(r'Shipping Address\s+(.*?)(?:Vendor|PO\s+No|PO\s+Date)', first_page_text, re.DOTALL | re.IGNORECASE)
+            if ship_section_match:
+                ship_section = ship_section_match.group(1)
+                gstin_match = re.search(r'(?:GSTIN|GST)[:\s-]*([A-Z0-9]{15})', ship_section, re.IGNORECASE)
+                if gstin_match:
+                    header_data["GST No"] = gstin_match.group(1)
         
         # Fallback: Extract shipping address from first page text if not found in table
         if not header_data["Shipping Address"]:
@@ -187,7 +191,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 for row_idx, row in enumerate(table):
                     first_cell = str(row[0] or "").strip()
                     
-                    if not row or len(row) < 10:
+                    if not row or len(row) < 8:  # Lowered from 10 to 8 to catch last rows
                         continue
                     
                     # Check if it's a data row (first column is a number)
@@ -423,7 +427,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     if not row_found and sr_no not in processed_sr_nos:
                         # Try to parse the entire line as space-separated values
                         parts = line.split()
-                        if len(parts) < 10:
+                        if len(parts) < 8:  # Lowered from 10 to 8 to catch last rows
                             continue
                         
                         # Extract fields (this is approximate - adjust indices as needed)
@@ -446,7 +450,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         
                         # After HSN: Qty, MRP, Base Cost, Taxable Value, GST rates, Total
                         remaining = parts[hsn_idx + 1:]
-                        if len(remaining) < 8:
+                        if len(remaining) < 6:  # Lowered from 8 to 6 to catch shorter rows
                             continue
                         
                         qty = remaining[0] if len(remaining) > 0 else ""
