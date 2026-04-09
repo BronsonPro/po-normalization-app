@@ -397,14 +397,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
             page_text = page.extract_text(layout=True) or ""
             text_lines = page_text.split('\n')
             
-            # DEBUG for Page 4
-            if is_page_4:
-                st.write(f"### Text extraction for Page 4:")
-                # Look for lines starting with "16 " (row 16)
-                for idx, line in enumerate(text_lines[:50]):  # Check first 50 lines
-                    if line.strip().startswith('16 '):
-                        st.write(f"✅ Found line starting with '16': {line[:100]}")
-            
             for line_idx, line in enumerate(text_lines):
                 # Look for lines that start with a number followed by item code pattern
                 # Pattern: "5 255618 Beautiliss Professional Classic Eyelash Curler ... 82142090 12 200.00 ..."
