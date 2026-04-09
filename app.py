@@ -863,6 +863,11 @@ if po_df is not None and master_df is not None:
             st.dataframe(report, width="stretch")
             st.download_button("⬇ Download Mismatch Report", open(path, "rb"), "Mismatch_Report.xlsx")
 
+            # ========== TEMPORARY: Allow process to continue even with mismatches ==========
+            # TODO: Remove this line once master files are updated to enforce validation
+            st.session_state['validation_success'] = True
+            # ========== END TEMPORARY ==========
+
         else:
             st.session_state['validation_success'] = True
             st.success("✅ No mismatches found. Updating Product Name & HSN Code from Master.")
