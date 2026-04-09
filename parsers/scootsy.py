@@ -227,32 +227,70 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     processed_sr_nos.add(first_cell)
                     
                     # Detect table format based on row length
-                    # Page 1: 19 columns with None at index 9
-                    # Page 2+: 18 columns without the None
-                    has_extra_column = len(row) >= 19
+                    row_len = len(row)
                     
-                    # Extract data from correct columns with defensive length checks
+                    # Extract data from correct columns
                     sr_no = first_cell
-                    item_code = str(row[1] or "").strip() if len(row) > 1 else ""
-                    product_name = str(row[2] or "").strip().replace('\n', ' ') if len(row) > 2 else ""
-                    hsn = str(row[3] or "").strip() if len(row) > 3 else ""
-                    qty = str(row[4] or "").strip() if len(row) > 4 else ""
-                    mrp = str(row[5] or "").strip() if len(row) > 5 else ""
-                    base_rate = str(row[6] or "").strip() if len(row) > 6 else ""
+                    item_code = str(row[1] or "").strip() if row_len > 1 else ""
+                    product_name = str(row[2] or "").strip().replace('\n', ' ') if row_len > 2 else ""
+                    hsn = str(row[3] or "").strip() if row_len > 3 else ""
+                    qty = str(row[4] or "").strip() if row_len > 4 else ""
+                    
+                    # Handle MRP and Base Rate - they might be merged in column 5
+                    if row_len == 17:
+                        # 17-column format: MRP and Base Rate might be merged in column 5
+                        col5 = str(row[5] or "").strip() if row_len > 5 else ""
+                        col6 = str(row[6] or "").strip() if row_len > 6 else ""
+                        
+                        # Check if col5 contains two space-separated numbers (MRP + Base Rate)
+                        col5_parts = col5.split()
+                        if len(col5_parts) >= 2:
+                            mrp = col5_parts[0]
+                            base_rate = col5_parts[1]
+                        else:
+                            mrp = col5
+                            base_rate = col6
+                    else:
+                        # Normal format
+                        mrp = str(row[5] or "").strip() if row_len > 5 else ""
+                        base_rate = str(row[6] or "").strip() if row_len > 6 else ""
                     
                     # GST Rate - indices depend on table format
-                    if has_extra_column:
+                    if row_len == 19:
                         # 19-column format (page 1): None at index 9, everything shifted by 1
-                        cgst_rate = str(row[8] or "").strip() if len(row) > 8 else ""
-                        sgst_rate = str(row[11] or "").strip() if len(row) > 11 else ""
-                        igst_rate = str(row[13] or "").strip() if len(row) > 13 else ""
-                        total = str(row[18] or "").strip() if len(row) > 18 else ""
+                        cgst_rate = str(row[8] or "").strip() if row_len > 8 else ""
+                        sgst_rate = str(row[11] or "").strip() if row_len > 11 else ""
+                        igst_rate = str(row[13] or "").strip() if row_len > 13 else ""
+                        total = str(row[18] or "").strip() if row_len > 18 else ""
+                    elif row_len == 18:
+                        # 18-column format (page 2): No extra None column
+                        cgst_rate = str(row[8] or "").strip() if row_len > 8 else ""
+                        sgst_rate = str(row[10] or "").strip() if row_len > 10 else ""
+                        igst_rate = str(row[12] or "").strip() if row_len > 12 else ""
+                        total = str(row[17] or "").strip() if row_len > 17 else ""
+                    elif row_len == 17:
+                        # 17-column format (pages 3, 5): Columns merged
+                        # IGST might be in column 11 or 12 with merged values
+                        col11 = str(row[11] or "").strip() if row_len > 11 else ""
+                        col12 = str(row[12] or "").strip() if row_len > 12 else ""
+                        
+                        # Check col12 first (might have "0 18.00 153.76" format)
+                        col12_parts = col12.split()
+                        if len(col12_parts) >= 2:
+                            # Format: "0 18.00 ..." -> IGST rate is second value
+                            igst_rate = col12_parts[1] if len(col12_parts) > 1 else ""
+                        else:
+                            igst_rate = col11
+                        
+                        cgst_rate = "0"  # Assume IGST format
+                        sgst_rate = "0"
+                        total = str(row[16] or "").strip() if row_len > 16 else ""
                     else:
-                        # 18-column format (page 2+): No extra None column
-                        cgst_rate = str(row[8] or "").strip() if len(row) > 8 else ""
-                        sgst_rate = str(row[10] or "").strip() if len(row) > 10 else ""
-                        igst_rate = str(row[12] or "").strip() if len(row) > 12 else ""
-                        total = str(row[17] or "").strip() if len(row) > 17 else ""
+                        # Fallback for other formats
+                        cgst_rate = str(row[8] or "").strip() if row_len > 8 else ""
+                        sgst_rate = str(row[10] or "").strip() if row_len > 10 else ""
+                        igst_rate = str(row[12] or "").strip() if row_len > 12 else ""
+                        total = str(row[-1] or "").strip()  # Last column
                     
                     # Use IGST if present, otherwise CGST+SGST
                     gst_rate = ""
