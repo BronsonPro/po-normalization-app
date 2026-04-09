@@ -865,111 +865,113 @@ if po_df is not None and master_df is not None:
 
             # ========== TEMPORARY: Allow process to continue even with mismatches ==========
             # TODO: Remove this line once master files are updated to enforce validation
-            st.session_state['validation_success'] = True
+            st.warning("⚠️ Continuing with mismatches (temporary setting)")
             # ========== END TEMPORARY ==========
 
         else:
-            st.session_state['validation_success'] = True
             st.success("✅ No mismatches found. Updating Product Name & HSN Code from Master.")
 
-            # SCOOTSY FIX #4: Proper merge for Scootsy
+            
+# ========== TEMPORARY: This code now runs for BOTH cases (with and without mismatches) ==========
+        st.session_state['validation_success'] = True
+                # SCOOTSY FIX #4: Proper merge for Scootsy
+        if party == "Scootsy":
+            # Drop empty EAN from PO, then merge on Item Code
+            if "EAN" in po.columns:
+                po = po.drop(columns=["EAN"])
+            
+            upd = po.merge(master[["Item Code", "EAN", "Product Name"]], on="Item Code", how="left")
+        else:
+            # All other parties: Standard EAN merge
+            upd = po.merge(
+                master[["EAN", "Product Name", "HSN Code"]],
+                on="EAN",
+                how="left",
+                suffixes=("_PO", "_MASTER")
+            )
+        
+        # Add rack number
+        if rack_master is not None:
+            upd = upd.merge(rack_master, on="EAN", how="left")
+        else:
+            upd["Rack Number"] = ""
+        
+        if "Rack Number" in upd.columns:
+            cols = [c for c in upd.columns if c != "Rack Number"] + ["Rack Number"]
+            upd = upd[cols]
+        
+        # TataCliq: Populate MRP from master
+        if party == "TataCliq":
+            if "MRP" in upd.columns and "EAN" in upd.columns:
+                mrp_lookup = master.set_index("EAN")["MRP"].to_dict()
+                upd["MRP"] = upd["EAN"].map(mrp_lookup).fillna(0)
+        
+        if "Product Name_MASTER" in upd.columns:
+            upd["Product Name"] = upd["Product Name_MASTER"].fillna(upd["Product Name_PO"])
+        elif party == "Scootsy" and "Product Name_y" in upd.columns:
+            # For Scootsy: Handle _x and _y suffixes
+            upd["Product Name"] = upd["Product Name_y"]
+            upd = upd.drop(columns=["Product Name_x", "Product Name_y"])
+        
+        if "HSN Code_MASTER" in upd.columns:
+            upd["HSN Code"] = upd["HSN Code_MASTER"].fillna(upd["HSN Code_PO"])
+        
+        upd.drop(columns=[c for c in upd.columns if c.endswith("_PO") or c.endswith("_MASTER")], inplace=True)
+        
+        # SCOOTSY FIX #5: Convert EAN properly for Scootsy (avoid scientific notation)
+        if "EAN" in upd.columns:
             if party == "Scootsy":
-                # Drop empty EAN from PO, then merge on Item Code
-                if "EAN" in po.columns:
-                    po = po.drop(columns=["EAN"])
-                
-                upd = po.merge(master[["Item Code", "EAN", "Product Name"]], on="Item Code", how="left")
+                upd["EAN"] = upd["EAN"].apply(lambda x: f"{int(x)}" if pd.notna(x) and x != "" and x != 0 else "")
             else:
-                # All other parties: Standard EAN merge
-                upd = po.merge(
-                    master[["EAN", "Product Name", "HSN Code"]],
-                    on="EAN",
-                    how="left",
-                    suffixes=("_PO", "_MASTER")
-                )
-
-            # Add rack number
-            if rack_master is not None:
-                upd = upd.merge(rack_master, on="EAN", how="left")
-            else:
-                upd["Rack Number"] = ""
-
-            if "Rack Number" in upd.columns:
-                cols = [c for c in upd.columns if c != "Rack Number"] + ["Rack Number"]
-                upd = upd[cols]
-
-            # TataCliq: Populate MRP from master
-            if party == "TataCliq":
-                if "MRP" in upd.columns and "EAN" in upd.columns:
-                    mrp_lookup = master.set_index("EAN")["MRP"].to_dict()
-                    upd["MRP"] = upd["EAN"].map(mrp_lookup).fillna(0)
-
-            if "Product Name_MASTER" in upd.columns:
-                upd["Product Name"] = upd["Product Name_MASTER"].fillna(upd["Product Name_PO"])
-            elif party == "Scootsy" and "Product Name_y" in upd.columns:
-                # For Scootsy: Handle _x and _y suffixes
-                upd["Product Name"] = upd["Product Name_y"]
-                upd = upd.drop(columns=["Product Name_x", "Product Name_y"])
-
-            if "HSN Code_MASTER" in upd.columns:
-                upd["HSN Code"] = upd["HSN Code_MASTER"].fillna(upd["HSN Code_PO"])
-
-            upd.drop(columns=[c for c in upd.columns if c.endswith("_PO") or c.endswith("_MASTER")], inplace=True)
-
-            # SCOOTSY FIX #5: Convert EAN properly for Scootsy (avoid scientific notation)
-            if "EAN" in upd.columns:
-                if party == "Scootsy":
-                    upd["EAN"] = upd["EAN"].apply(lambda x: f"{int(x)}" if pd.notna(x) and x != "" and x != 0 else "")
-                else:
-                    upd["EAN"] = upd["EAN"].astype(str).str.replace(".0","", regex=False)
-
-            final_raw = raw_po.copy()
-            start_row = table_header_row + 1
-
-            money_cols = [c for c in upd.columns if any(k in c.lower() for k in ["total", "value", "rate", "mrp", "amount", "base", "tax"])]
-
+                upd["EAN"] = upd["EAN"].astype(str).str.replace(".0","", regex=False)
+        
+        final_raw = raw_po.copy()
+        start_row = table_header_row + 1
+        
+        money_cols = [c for c in upd.columns if any(k in c.lower() for k in ["total", "value", "rate", "mrp", "amount", "base", "tax"])]
+        
+        header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
+        
+        # Ensure Rack column exists
+        if "Rack Number" not in header_values:
+            final_raw["Rack Number"] = ""
+            final_raw.at[table_header_row, "Rack Number"] = "Rack Number"
+        
+        header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
+        col_index_map = {h: idx for idx, h in enumerate(header_values)}
+        
+        for i in range(len(upd)):
+            for col in upd.columns:
+                if col not in col_index_map:
+                    continue
+                j = col_index_map[col]
+                val = upd.at[i, col]
+                formatted_val = format_2_dec(val) if col in money_cols else val
+                final_raw.iat[start_row + i, j] = str(formatted_val) if formatted_val is not None else ""
+        
+        # SCOOTSY FIX #6: Remove Item Code column from final sheet
+        if party == "Scootsy":
             header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
-
-            # Ensure Rack column exists
-            if "Rack Number" not in header_values:
-                final_raw["Rack Number"] = ""
-                final_raw.at[table_header_row, "Rack Number"] = "Rack Number"
-
-            header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
-            col_index_map = {h: idx for idx, h in enumerate(header_values)}
-
-            for i in range(len(upd)):
-                for col in upd.columns:
-                    if col not in col_index_map:
-                        continue
-                    j = col_index_map[col]
-                    val = upd.at[i, col]
-                    #final_raw.iat[start_row + i, j] = format_2_dec(val) if col in money_cols else val
-                    formatted_val = format_2_dec(val) if col in money_cols else val
-                    final_raw.iat[start_row + i, j] = str(formatted_val) if formatted_val is not None else ""
-            # SCOOTSY FIX #6: Remove Item Code column from final sheet
-            if party == "Scootsy":
-                header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
-                if "Item Code" in header_values:
-                    item_code_idx = header_values.index("Item Code")
-                    final_raw.drop(final_raw.columns[item_code_idx], axis=1, inplace=True)
-
-            # Get PO number
-            po_number = "PO"
-            for i in range(table_header_row):
-                row = final_raw.iloc[i].astype(str).str.lower().tolist()
-                if "po no" in row or "po number" in row:
-                    try:
-                        po_number = str(final_raw.iloc[i, 1]).strip()
-                    except:
-                        po_number = "PO"
-                    break
-
-            safe_party = party.replace(" ", "").replace("/", "")
-            safe_po = po_number.replace("/", "_").replace("\\", "_").replace(" ", "")
-            filename = f"{safe_party}_{safe_po}.xlsx"
-            final_path = os.path.join(tempfile.gettempdir(), filename)
-
+            if "Item Code" in header_values:
+                item_code_idx = header_values.index("Item Code")
+                final_raw.drop(final_raw.columns[item_code_idx], axis=1, inplace=True)
+        
+        # Get PO number
+        po_number = "PO"
+        for i in range(table_header_row):
+            row = final_raw.iloc[i].astype(str).str.lower().tolist()
+            if "po no" in row or "po number" in row:
+                try:
+                    po_number = str(final_raw.iloc[i, 1]).strip()
+                except:
+                    po_number = "PO"
+                break
+        
+        safe_party = party.replace(" ", "").replace("/", "")
+        safe_po = po_number.replace("/", "_").replace("\\", "_").replace(" ", "")
+        filename = f"{safe_party}_{safe_po}.xlsx"
+        final_path = os.path.join(tempfile.gettempdir(), filename)
+        # ========== END TEMPORARY CHANGE - Continue with rest of code ==========    
             
             final_raw.to_excel(final_path, index=False, header=False)
 
