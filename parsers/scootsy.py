@@ -443,7 +443,12 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         # Try to parse the entire line as space-separated values
                         parts = line.split()
                         if len(parts) < 8:  # Lowered from 10 to 8 to catch last rows
+                            if sr_no == "16":
+                                st.write(f"   ❌ Skipped: len(parts)={len(parts)} < 8")
                             continue
+                        
+                        if sr_no == "16":
+                            st.write(f"   ✅ Parts check passed: {len(parts)} parts")
                         
                         # Extract fields (this is approximate - adjust indices as needed)
                         item_code = parts[1] if len(parts) > 1 else ""
@@ -459,14 +464,25 @@ def convert_pdf_to_excel(pdf_path, output_path):
                             product_parts.append(parts[i])
                         
                         if hsn_idx == -1:
+                            if sr_no == "16":
+                                st.write(f"   ❌ Skipped: HSN not found")
                             continue
+                        
+                        if sr_no == "16":
+                            st.write(f"   ✅ HSN found at index {hsn_idx}: {hsn}")
                         
                         product_name = ' '.join(product_parts)
                         
                         # After HSN: Qty, MRP, Base Cost, Taxable Value, GST rates, Total
                         remaining = parts[hsn_idx + 1:]
                         if len(remaining) < 6:  # Lowered from 8 to 6 to catch shorter rows
+                            if sr_no == "16":
+                                st.write(f"   ❌ Skipped: len(remaining)={len(remaining)} < 6")
                             continue
+                        
+                        if sr_no == "16":
+                            st.write(f"   ✅ Remaining check passed: {len(remaining)} values after HSN")
+                            st.write(f"   → Adding row 16 to all_rows!")
                         
                         qty = remaining[0] if len(remaining) > 0 else ""
                         mrp = remaining[1] if len(remaining) > 1 else ""
