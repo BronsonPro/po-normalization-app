@@ -41,13 +41,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
         if os.path.exists(master_path):
             master_df = pd.read_excel(master_path)
             
-            # DEBUG - Show master file columns
-            with st.expander("🔍 Scootsy Master File Debug", expanded=True):
-                st.write("Master file found:", master_path)
-                st.write("Columns:", list(master_df.columns))
-                st.write("First row sample:")
-                st.write(master_df.head(1).to_dict('records'))
-            
             # Try both column name possibilities for EAN
             if 'Brand SKU Code' in master_df.columns and 'Item Code' in master_df.columns:
                 for _, row in master_df.iterrows():
@@ -155,15 +148,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 # Later processing in app.py will extract pincode from this
                 header_data["Shipping Address"] = addr_text
         
-        # DEBUG - Show shipping address extraction (only once after all pages processed)
-        import streamlit as st
-        with st.expander("🔍 Shipping Address Debug", expanded=True):
-            st.write(f"Shipping Address extracted: '{header_data['Shipping Address']}'")
-            st.write(f"GST No extracted: '{header_data['GST No']}'")
-            if not header_data["Shipping Address"]:
-                st.write(f"First page text (first 500 chars):")
-                st.text(first_page_text[:500])
-        
         # Extract table data from all pages (second pass for data rows)
         all_sr_numbers_found = []  # Track all serial numbers we find
         
@@ -187,7 +171,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
             
             # Track which serial numbers we've processed
             processed_sr_nos = set()
-            first_row_shown_per_page = {}  # Track if we've shown debug for this page
             
             for table in tables:
                 for row_idx, row in enumerate(table):
@@ -199,33 +182,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     # Check if it's a data row (first column is a number)
                     if not first_cell or not first_cell.isdigit():
                         continue
-                    
-                    # DEBUG - Show key columns for each page to identify structure
-                    import streamlit as st
-                    if page_num not in first_row_shown_per_page:
-                        with st.expander(f"🔍 Page {page_num + 1} First Row Structure (Sr#{first_cell})", expanded=True):
-                            st.write(f"Row length: {len(row)}")
-                            st.write("Key columns:")
-                            st.write(f"  [0] Sr: '{row[0] if len(row) > 0 else ''}'")
-                            st.write(f"  [1] Item Code: '{row[1] if len(row) > 1 else ''}'")
-                            st.write(f"  [2] Product: '{row[2] if len(row) > 2 else ''}'")
-                            st.write(f"  [3] HSN: '{row[3] if len(row) > 3 else ''}'")
-                            st.write(f"  [4] Qty: '{row[4] if len(row) > 4 else ''}'")
-                            st.write(f"  [5] MRP: '{row[5] if len(row) > 5 else ''}'")
-                            st.write(f"  [6] Base: '{row[6] if len(row) > 6 else ''}'")
-                            st.write(f"  [7]: '{row[7] if len(row) > 7 else ''}'")
-                            st.write(f"  [8]: '{row[8] if len(row) > 8 else ''}'")
-                            st.write(f"  [9]: '{row[9] if len(row) > 9 else ''}'")
-                            st.write(f"  [10]: '{row[10] if len(row) > 10 else ''}'")
-                            st.write(f"  [11]: '{row[11] if len(row) > 11 else ''}'")
-                            st.write(f"  [12]: '{row[12] if len(row) > 12 else ''}'")
-                            st.write(f"  [13]: '{row[13] if len(row) > 13 else ''}'")
-                            st.write(f"  [14]: '{row[14] if len(row) > 14 else ''}'")
-                            st.write(f"  [15]: '{row[15] if len(row) > 15 else ''}'")
-                            st.write(f"  [16]: '{row[16] if len(row) > 16 else ''}'")
-                            st.write(f"  [17]: '{row[17] if len(row) > 17 else ''}'")
-                            st.write(f"  [18]: '{row[18] if len(row) > 18 else ''}'")
-                        first_row_shown_per_page[page_num] = True
                     
                     # Skip if already processed (avoid duplicates)
                     if first_cell in processed_sr_nos:
@@ -362,19 +318,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     ean = master_ean_map.get(item_code_clean, "")  # Get EAN from master map
                     master_product_name = master_product_map.get(item_code_clean, "")  # Get Product Name from master
                     
-                    # DEBUG - Show mapping for rows 5 and 6
-                    import streamlit as st
-                    if sr_no in ["5", "6"]:
-                        if not hasattr(st.session_state, 'scootsy_product_debug_shown'):
-                            with st.expander(f"🔍 Product Mapping Debug", expanded=True):
-                                st.write(f"Row {sr_no}:")
-                                st.write(f"  Item Code: '{item_code}' → Clean: '{item_code_clean}'")
-                                st.write(f"  PO Product Name: '{product_name}'")
-                                st.write(f"  Master Product Name: '{master_product_name}'")
-                                st.write(f"  EAN: '{ean}'")
-                                st.write(f"  Master map size: {len(master_product_map)} items")
-                            st.session_state.scootsy_product_debug_shown = True
-                    
                     # Use master product name if available, otherwise use PO product name
                     final_product_name = master_product_name if master_product_name else product_name
                     
@@ -407,12 +350,6 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     item_code = match.group(2)
                     rest = match.group(3)
                     
-                    # DEBUG - Track row 16 specifically
-                    import streamlit as st
-                    if sr_no == "16":
-                        st.write(f"🔍 Fallback found Sr#16 on page {page_num + 1}")
-                        st.write(f"   Line: {line[:120]}")
-                    
                     # For page 2, product name might be on multiple lines
                     # Collect next few lines until we hit the HSN (8-digit number)
                     if page_num > 0:  # Page 2+
@@ -433,22 +370,12 @@ def convert_pdf_to_excel(pdf_path, output_path):
                             row_found = True
                             break
                     
-                    # DEBUG for row 16
-                    if sr_no == "16":
-                        st.write(f"   Row found in all_rows: {row_found}")
-                        st.write(f"   Will process: {not row_found}")
-                    
                     # If row wasn't found in table extraction, add it now
                     if not row_found:  # Removed the processed_sr_nos check - only check if row is actually in all_rows
                         # Try to parse the entire line as space-separated values
                         parts = line.split()
                         if len(parts) < 8:  # Lowered from 10 to 8 to catch last rows
-                            if sr_no == "16":
-                                st.write(f"   ❌ Skipped: len(parts)={len(parts)} < 8")
                             continue
-                        
-                        if sr_no == "16":
-                            st.write(f"   ✅ Parts check passed: {len(parts)} parts")
                         
                         # Extract fields (this is approximate - adjust indices as needed)
                         item_code = parts[1] if len(parts) > 1 else ""
@@ -464,25 +391,14 @@ def convert_pdf_to_excel(pdf_path, output_path):
                             product_parts.append(parts[i])
                         
                         if hsn_idx == -1:
-                            if sr_no == "16":
-                                st.write(f"   ❌ Skipped: HSN not found")
                             continue
-                        
-                        if sr_no == "16":
-                            st.write(f"   ✅ HSN found at index {hsn_idx}: {hsn}")
                         
                         product_name = ' '.join(product_parts)
                         
                         # After HSN: Qty, MRP, Base Cost, Taxable Value, GST rates, Total
                         remaining = parts[hsn_idx + 1:]
                         if len(remaining) < 6:  # Lowered from 8 to 6 to catch shorter rows
-                            if sr_no == "16":
-                                st.write(f"   ❌ Skipped: len(remaining)={len(remaining)} < 6")
                             continue
-                        
-                        if sr_no == "16":
-                            st.write(f"   ✅ Remaining check passed: {len(remaining)} values after HSN")
-                            st.write(f"   → Adding row 16 to all_rows!")
                         
                         qty = remaining[0] if len(remaining) > 0 else ""
                         mrp = remaining[1] if len(remaining) > 1 else ""
@@ -526,37 +442,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         ])
                         
                         processed_sr_nos.add(sr_no)
-        
-        # DEBUG - Show serial number summary
-        import streamlit as st
-        with st.expander("🔍 Serial Numbers Found", expanded=True):
-            st.write(f"Total rows extracted: {len(all_sr_numbers_found)}")
-            if all_sr_numbers_found:
-                last_sr, last_pg = all_sr_numbers_found[-1]
-                st.write(f"Last row: Sr#{last_sr} on Page {last_pg}")
-                
-                # Check both the last data page AND the next page for missing rows
-                pages_to_check = [last_pg]
-                if last_pg < len(pdf.pages):
-                    pages_to_check.append(last_pg + 1)
-                
-                for pg_num in pages_to_check:
-                    st.write(f"\n**Raw text from Page {pg_num}:**")
-                    page_to_check = pdf.pages[pg_num - 1]
-                    page_text = page_to_check.extract_text() or ""
-                    
-                    # Look for lines starting with numbers
-                    lines = page_text.split('\n')
-                    last_sr_int = int(last_sr) if last_sr.isdigit() else 0
-                    st.write(f"Lines with serial numbers >= {last_sr_int - 1}:")
-                    for line in lines:
-                        match = re.match(r'^(\d+)\s+', line)
-                        if match:
-                            sr = match.group(1)
-                            sr_int = int(sr)
-                            if sr_int >= last_sr_int - 1:
-                                st.text(f"  Sr#{sr}: {line[:120]}")
-
+                        all_sr_numbers_found.append((sr_no, page_num + 1))  # Track in summary too!
     
     # Add summary rows - extract from PDF
     # Summary can be on any page, so search all pages
