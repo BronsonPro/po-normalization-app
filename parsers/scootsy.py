@@ -194,14 +194,31 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     if not first_cell or not first_cell.isdigit():
                         continue
                     
-                    # DEBUG - Show first data row structure for each page
+                    # DEBUG - Show key columns for each page to identify structure
                     import streamlit as st
                     if page_num not in first_row_shown_per_page:
-                        with st.expander(f"🔍 Page {page_num + 1} First Row (Sr#{first_cell}) Structure", expanded=True):
+                        with st.expander(f"🔍 Page {page_num + 1} First Row Structure (Sr#{first_cell})", expanded=True):
                             st.write(f"Row length: {len(row)}")
-                            st.write("All columns:")
-                            for i in range(len(row)):
-                                st.write(f"  [{i}]: '{row[i]}'")
+                            st.write("Key columns:")
+                            st.write(f"  [0] Sr: '{row[0] if len(row) > 0 else ''}'")
+                            st.write(f"  [1] Item Code: '{row[1] if len(row) > 1 else ''}'")
+                            st.write(f"  [2] Product: '{row[2] if len(row) > 2 else ''}'")
+                            st.write(f"  [3] HSN: '{row[3] if len(row) > 3 else ''}'")
+                            st.write(f"  [4] Qty: '{row[4] if len(row) > 4 else ''}'")
+                            st.write(f"  [5] MRP: '{row[5] if len(row) > 5 else ''}'")
+                            st.write(f"  [6] Base: '{row[6] if len(row) > 6 else ''}'")
+                            st.write(f"  [7]: '{row[7] if len(row) > 7 else ''}'")
+                            st.write(f"  [8]: '{row[8] if len(row) > 8 else ''}'")
+                            st.write(f"  [9]: '{row[9] if len(row) > 9 else ''}'")
+                            st.write(f"  [10]: '{row[10] if len(row) > 10 else ''}'")
+                            st.write(f"  [11]: '{row[11] if len(row) > 11 else ''}'")
+                            st.write(f"  [12]: '{row[12] if len(row) > 12 else ''}'")
+                            st.write(f"  [13]: '{row[13] if len(row) > 13 else ''}'")
+                            st.write(f"  [14]: '{row[14] if len(row) > 14 else ''}'")
+                            st.write(f"  [15]: '{row[15] if len(row) > 15 else ''}'")
+                            st.write(f"  [16]: '{row[16] if len(row) > 16 else ''}'")
+                            st.write(f"  [17]: '{row[17] if len(row) > 17 else ''}'")
+                            st.write(f"  [18]: '{row[18] if len(row) > 18 else ''}'")
                         first_row_shown_per_page[page_num] = True
                     
                     # Skip if already processed (avoid duplicates)
