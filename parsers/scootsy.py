@@ -400,7 +400,8 @@ def convert_pdf_to_excel(pdf_path, output_path):
             for line_idx, line in enumerate(text_lines):
                 # Look for lines that start with a number followed by item code pattern
                 # Pattern: "5 255618 Beautiliss Professional Classic Eyelash Curler ... 82142090 12 200.00 ..."
-                match = re.match(r'^(\d+)\s+(\d{6})\s+(.+)', line)
+                # Allow leading whitespace
+                match = re.match(r'^\s*(\d+)\s+(\d{6})\s+(.+)', line)
                 if match:
                     sr_no = match.group(1)
                     item_code = match.group(2)
