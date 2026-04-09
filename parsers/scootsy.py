@@ -229,9 +229,17 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     # Detect table format and check if HSN is missing
                     row_len = len(row)
                     
-                    # Check if this is a 19-column page without HSN (detect by checking if col[3] looks like a number instead of HSN)
+                    # Check if this is a page without HSN:
+                    # If col[4] is an 8-digit number (HSN pattern), then col[3] should be HSN but might be empty
+                    # In that case, the actual HSN is in col[4] and we're missing the HSN column
                     col3_val = str(row[3] or "").strip() if row_len > 3 else ""
-                    has_no_hsn = (row_len == 19 and col3_val and col3_val.replace('.','').isdigit() and len(col3_val) < 8)
+                    col4_val = str(row[4] or "").strip() if row_len > 4 else ""
+                    
+                    # If col[3] is empty/short and col[4] looks like HSN (8 digits), HSN column is missing
+                    has_no_hsn = (row_len == 19 and 
+                                 len(col3_val) < 5 and 
+                                 len(col4_val) == 8 and 
+                                 col4_val.isdigit())
                     
                     # Extract data from correct columns
                     sr_no = first_cell
@@ -240,14 +248,14 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     
                     if has_no_hsn:
                         # 19-column format WITHOUT HSN - everything shifts left by 1
-                        hsn = ""  # HSN missing
-                        qty = str(row[3] or "").strip() if row_len > 3 else ""
-                        mrp = str(row[4] or "").strip() if row_len > 4 else ""
-                        base_rate = str(row[5] or "").strip() if row_len > 5 else ""
+                        hsn = col4_val  # HSN is actually in col[4]
+                        qty = str(row[5] or "").strip() if row_len > 5 else ""  # Qty shifted to col[5]
+                        mrp = str(row[6] or "").strip() if row_len > 6 else ""  # MRP shifted to col[6]
+                        base_rate = str(row[7] or "").strip() if row_len > 7 else ""  # Base shifted to col[7]
                     else:
-                        # Normal formats with HSN
-                        hsn = str(row[3] or "").strip() if row_len > 3 else ""
-                        qty = str(row[4] or "").strip() if row_len > 4 else ""
+                        # Normal formats with HSN in correct position
+                        hsn = col3_val
+                        qty = col4_val
                         
                         # Handle MRP and Base Rate - they might be merged in column 5 for 17-column format
                         if row_len == 17:
