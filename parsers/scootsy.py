@@ -186,14 +186,14 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 for row_idx, row in enumerate(table):
                     first_cell = str(row[0] or "").strip()
                     
-                    # DEBUG - Show row structure for pages 3+ (problematic pages)
+                    # DEBUG - Show row structure (show for row 1 on each page)
                     import streamlit as st
-                    if page_num >= 2 and first_cell.isdigit() and int(first_cell) <= 2:
-                        with st.expander(f"🔍 Page {page_num + 1} Row {first_cell} Structure", expanded=True):
+                    if first_cell == "1":  # Show structure for first data row on every page
+                        with st.expander(f"🔍 Page {page_num + 1} Row 1 Structure", expanded=True):
                             st.write(f"Row length: {len(row)}")
-                            st.write("Column values:")
-                            for i in range(min(20, len(row))):
-                                st.write(f"  Col[{i}]: '{row[i]}'")
+                            st.write("All columns:")
+                            for i in range(len(row)):
+                                st.write(f"  [{i}]: '{row[i]}'")
                     
                     if not row or len(row) < 10:
                         continue
