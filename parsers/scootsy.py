@@ -166,6 +166,12 @@ def convert_pdf_to_excel(pdf_path, output_path):
         
         # Extract table data from all pages (second pass for data rows)
         for page_num, page in enumerate(pdf.pages):
+            # DEBUG - Show info for last page
+            import streamlit as st
+            is_last_page = (page_num == len(pdf.pages) - 1)
+            if is_last_page:
+                st.write(f"### 🔍 Last Page (Page {page_num + 1}) Debug")
+            
             # For page 2+, use more lenient table extraction settings
             # to capture rows at the top without borders
             if page_num > 0:
@@ -181,7 +187,17 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 tables = page.extract_tables()
             
             if not tables:
+                if is_last_page:
+                    st.write("⚠️ No tables on last page")
                 continue
+            
+            if is_last_page:
+                st.write(f"✅ Last page has {len(tables)} table(s)")
+                st.write(f"   First table rows: {len(tables[0])}")
+                for i in range(min(8, len(tables[0]))):
+                    row = tables[0][i]
+                    fc = str(row[0]).strip()[:20] if row and len(row) > 0 else ""
+                    st.write(f"  [{i}]: '{fc}' len={len(row)}")
             
             # Track which serial numbers we've processed
             processed_sr_nos = set()
