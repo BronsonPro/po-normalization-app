@@ -507,23 +507,27 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 last_sr, last_pg = all_sr_numbers_found[-1]
                 st.write(f"Last row: Sr#{last_sr} on Page {last_pg}")
                 
-                # Show raw text from the last data page to check for missing rows
-                st.write(f"\n**Raw text from Page {last_pg} (looking for rows after Sr#{last_sr}):**")
-                last_data_page = pdf.pages[last_pg - 1]
-                page_text = last_data_page.extract_text() or ""
+                # Check both the last data page AND the next page for missing rows
+                pages_to_check = [last_pg]
+                if last_pg < len(pdf.pages):
+                    pages_to_check.append(last_pg + 1)
                 
-                # Look for lines starting with numbers after the last serial number
-                lines = page_text.split('\n')
-                last_sr_int = int(last_sr) if last_sr.isdigit() else 0
-                st.write("Lines with serial numbers:")
-                for line in lines:
-                    # Check if line starts with a number
-                    match = re.match(r'^(\d+)\s+', line)
-                    if match:
-                        sr = match.group(1)
-                        sr_int = int(sr)
-                        if sr_int >= last_sr_int - 2:  # Show last few + any after
-                            st.text(f"  Sr#{sr}: {line[:100]}")
+                for pg_num in pages_to_check:
+                    st.write(f"\n**Raw text from Page {pg_num}:**")
+                    page_to_check = pdf.pages[pg_num - 1]
+                    page_text = page_to_check.extract_text() or ""
+                    
+                    # Look for lines starting with numbers
+                    lines = page_text.split('\n')
+                    last_sr_int = int(last_sr) if last_sr.isdigit() else 0
+                    st.write(f"Lines with serial numbers >= {last_sr_int - 1}:")
+                    for line in lines:
+                        match = re.match(r'^(\d+)\s+', line)
+                        if match:
+                            sr = match.group(1)
+                            sr_int = int(sr)
+                            if sr_int >= last_sr_int - 1:
+                                st.text(f"  Sr#{sr}: {line[:120]}")
 
     
     # Add summary rows - extract from PDF
