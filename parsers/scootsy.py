@@ -165,17 +165,9 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 st.text(first_page_text[:500])
         
         # Extract table data from all pages (second pass for data rows)
+        all_sr_numbers_found = []  # Track all serial numbers we find
+        
         for page_num, page in enumerate(pdf.pages):
-            # DEBUG - Show info for last page
-            import streamlit as st
-            is_last_page = (page_num == len(pdf.pages) - 1)
-            is_page_4 = (page_num == 3)  # Page 4 is index 3
-            
-            if is_last_page:
-                st.write(f"### 🔍 Last Page (Page {page_num + 1}) Debug")
-            if is_page_4:
-                st.write(f"### 🔍 Page 4 Debug (looking for row 16)")
-            
             # For page 2+, use more lenient table extraction settings
             # to capture rows at the top without borders
             if page_num > 0:
@@ -191,26 +183,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                 tables = page.extract_tables()
             
             if not tables:
-                if is_last_page:
-                    st.write("⚠️ No tables on last page")
                 continue
-            
-            if is_last_page:
-                st.write(f"✅ Last page has {len(tables)} table(s)")
-                st.write(f"   First table rows: {len(tables[0])}")
-                for i in range(min(8, len(tables[0]))):
-                    row = tables[0][i]
-                    fc = str(row[0]).strip()[:20] if row and len(row) > 0 else ""
-                    st.write(f"  [{i}]: '{fc}' len={len(row)}")
-            
-            if is_page_4:
-                st.write(f"✅ Page 4 has {len(tables)} table(s)")
-                if tables:
-                    st.write(f"   First table rows: {len(tables[0])}")
-                    for i in range(min(10, len(tables[0]))):
-                        row = tables[0][i]
-                        fc = str(row[0]).strip() if row and len(row) > 0 else ""
-                        st.write(f"  Row[{i}]: Sr#='{fc}' len={len(row)}")
             
             # Track which serial numbers we've processed
             processed_sr_nos = set()
@@ -258,6 +231,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                     if first_cell in processed_sr_nos:
                         continue
                     processed_sr_nos.add(first_cell)
+                    all_sr_numbers_found.append((first_cell, page_num + 1))  # Track with page number
                     
                     # Detect table format and check if HSN is missing
                     row_len = len(row)
@@ -461,7 +435,7 @@ def convert_pdf_to_excel(pdf_path, output_path):
                             break
                     
                     # If row wasn't found in table extraction, add it now
-                    if not row_found and sr_no not in processed_sr_nos:
+                    if not row_found:  # Removed the processed_sr_nos check - only check if row is actually in all_rows
                         # Try to parse the entire line as space-separated values
                         parts = line.split()
                         if len(parts) < 8:  # Lowered from 10 to 8 to catch last rows
@@ -532,6 +506,33 @@ def convert_pdf_to_excel(pdf_path, output_path):
                         ])
                         
                         processed_sr_nos.add(sr_no)
+        
+        # DEBUG - Show serial number summary
+        import streamlit as st
+        with st.expander("🔍 Serial Numbers Found", expanded=True):
+            st.write(f"Total rows extracted: {len(all_sr_numbers_found)}")
+            if all_sr_numbers_found:
+                last_sr, last_pg = all_sr_numbers_found[-1]
+                st.write(f"Last row: Sr#{last_sr} on Page {last_pg}")
+                
+                # Show raw text from the last data page to check for missing rows
+                st.write(f"\n**Raw text from Page {last_pg} (looking for rows after Sr#{last_sr}):**")
+                last_data_page = pdf.pages[last_pg - 1]
+                page_text = last_data_page.extract_text() or ""
+                
+                # Look for lines starting with numbers after the last serial number
+                lines = page_text.split('\n')
+                last_sr_int = int(last_sr) if last_sr.isdigit() else 0
+                st.write("Lines with serial numbers:")
+                for line in lines:
+                    # Check if line starts with a number
+                    match = re.match(r'^(\d+)\s+', line)
+                    if match:
+                        sr = match.group(1)
+                        sr_int = int(sr)
+                        if sr_int >= last_sr_int - 2:  # Show last few + any after
+                            st.text(f"  Sr#{sr}: {line[:100]}")
+
     
     # Add summary rows - extract from PDF
     # Summary can be on any page, so search all pages
