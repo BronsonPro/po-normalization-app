@@ -205,9 +205,7 @@ PO Automation"""
 # ================== DJANGO UPLOAD ==================
 def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
     """Upload PO data to Django API"""
-    st.write(f"🔍 DEBUG: po_date INPUT = '{po_date}'")
-    st.write(f"🔍 DEBUG: po_expiry_date INPUT = '{po_expiry_date}'")
-
+    
     from datetime import datetime
     
     # Handle po_date
@@ -222,10 +220,7 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
                     continue
         except:
             pass
-    # DEBUG - See what we converted to
-    st.write(f"🔍 DEBUG: po_date OUTPUT = '{po_date}'")
-    st.write(f"🔍 DEBUG: po_expiry_date OUTPUT = '{po_expiry_date}'")
-
+    
     
     try:
         # Get already-processed dataframe from session state
