@@ -859,6 +859,11 @@ if po_df is not None and master_df is not None:
             path = os.path.join(tempfile.gettempdir(), "Mismatch_Report.xlsx")
             report.to_excel(path, index=False)
 
+            # Store in session state so it persists after rerun
+            st.session_state['mismatch_report'] = report
+            st.session_state['mismatch_path'] = path
+    
+
             st.error("❌ Mismatch found")
             st.dataframe(report, width="stretch")
             st.download_button("⬇ Download Mismatch Report", open(path, "rb"), "Mismatch_Report.xlsx")
@@ -1285,4 +1290,12 @@ if 'final_path' in st.session_state:
                         st.error(upload_message)
         else:
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
+
+if 'mismatch_report' in st.session_state:
+st.markdown("---")
+st.error("❌ Mismatch found in validation")
+st.dataframe(st.session_state['mismatch_report'], width="stretch")
+with open(st.session_state['mismatch_path'], "rb") as file:
+    st.download_button("⬇ Download Mismatch Report", file, "Mismatch_Report.xlsx", key="mismatch_download_persistent")
+
 
