@@ -1292,10 +1292,10 @@ if 'final_path' in st.session_state:
             st.info("📧 Email & Upload disabled. Create Email_Config.xlsx to enable")
 
 if 'mismatch_report' in st.session_state:
-st.markdown("---")
-st.error("❌ Mismatch found in validation")
-st.dataframe(st.session_state['mismatch_report'], width="stretch")
-with open(st.session_state['mismatch_path'], "rb") as file:
-    st.download_button("⬇ Download Mismatch Report", file, "Mismatch_Report.xlsx", key="mismatch_download_persistent")
+    st.markdown("---")
+    st.error("❌ Mismatch found in validation")
+    st.dataframe(st.session_state['mismatch_report'], width="stretch")
+    with open(st.session_state['mismatch_path'], "rb") as file:
+        st.download_button("⬇ Download Mismatch Report", file, "Mismatch_Report.xlsx", key="mismatch_download_persistent")
 
 
