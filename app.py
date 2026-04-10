@@ -973,265 +973,265 @@ if po_df is not None and master_df is not None:
         final_path = os.path.join(tempfile.gettempdir(), filename)
         # ========== END TEMPORARY CHANGE - Continue with rest of code ==========    
             
-            final_raw.to_excel(final_path, index=False, header=False)
+        final_raw.to_excel(final_path, index=False, header=False)
+        from openpyxl import load_workbook
+        from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
+        from math import ceil
 
-            from openpyxl import load_workbook
-            from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
-            from math import ceil
+        wb = load_workbook(final_path)
+        ws = wb.active
 
-            wb = load_workbook(final_path)
-            ws = wb.active
+        # Add party code
+        party_code_value = ""
+        if party_code_master is not None:
+            try:
+                party_name_sheet = ""
+                shipping_pin = ""
 
-            # Add party code
-            party_code_value = ""
-            if party_code_master is not None:
-                try:
-                    party_name_sheet = ""
-                    shipping_pin = ""
-
-                    for row in ws.iter_rows(min_row=1, max_row=table_header_row):
-                        label = str(row[0].value).strip().lower() if row[0].value else ""
+                for row in ws.iter_rows(min_row=1, max_row=table_header_row):
+                    label = str(row[0].value).strip().lower() if row[0].value else ""
                         
-                        if label == "party name":
-                            party_name_sheet = str(row[1].value).strip().lower() if row[1].value else ""
+                    if label == "party name":
+                        party_name_sheet = str(row[1].value).strip().lower() if row[1].value else ""
                         
-                        if label == "shipping address":
-                            addr = str(row[1].value) if row[1].value else ""
-                            pin_match = re.findall(r"\d{6}", addr)
-                            if pin_match:
-                                shipping_pin = pin_match[0]
-                            elif addr.strip().isdigit() and len(addr.strip()) == 6:
-                                shipping_pin = addr.strip()
-                            else:
-                                shipping_pin = ""
+                    if label == "shipping address":
+                        addr = str(row[1].value) if row[1].value else ""
+                        pin_match = re.findall(r"\d{6}", addr)
+                        if pin_match:
+                            shipping_pin = pin_match[0]
+                        elif addr.strip().isdigit() and len(addr.strip()) == 6:
+                            shipping_pin = addr.strip()
+                        else:
+                            shipping_pin = ""
 
-                    if party_name_sheet and shipping_pin:
-                        party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
-                        party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
-                            lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
-                        )
+                if party_name_sheet and shipping_pin:
+                    party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
+                    party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
+                        lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
+                    )
 
+                    match = party_code_master[
+                        (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
+                        (party_code_master["_clean_name"] == party_name_clean)
+                    ]
+                        
+                    if match.empty:
                         match = party_code_master[
                             (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
-                            (party_code_master["_clean_name"] == party_name_clean)
+                            (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
                         ]
-                        
-                        if match.empty:
-                            match = party_code_master[
-                                (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
-                                (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
-                            ]
 
-                        if not match.empty:
-                            party_code_value = str(match.iloc[0]["Party Code"])
+                    if not match.empty:
+                        party_code_value = str(match.iloc[0]["Party Code"])
 
-                except Exception as e:
-                    party_code_value = ""
+            except Exception as e:
+                party_code_value = ""
 
-            insert_row = None
-            for r in range(1, table_header_row + 2):
-                val = ws.cell(row=r, column=1).value
-                if val and str(val).strip().lower() == "party name":
-                    insert_row = r + 1
-                    break
+        insert_row = None
+        for r in range(1, table_header_row + 2):
+            val = ws.cell(row=r, column=1).value
+            if val and str(val).strip().lower() == "party name":
+                insert_row = r + 1
+                break
 
-            if insert_row is None:
-                insert_row = 2
+        if insert_row is None:
+            insert_row = 2
 
-            ws.insert_rows(insert_row)
-            ws.cell(row=insert_row, column=1).value = "Party Code"
-            ws.cell(row=insert_row, column=2).value = party_code_value
+        ws.insert_rows(insert_row)
+        ws.cell(row=insert_row, column=1).value = "Party Code"
+        ws.cell(row=insert_row, column=2).value = party_code_value
 
-            # Shipping address → keep only pincode
-            for row in ws.iter_rows(min_row=1, max_row=table_header_row):
-                field_cell = row[0]
-                if field_cell.value and str(field_cell.value).strip().lower() == "shipping address":
-                    val_cell = row[1]
-                    if val_cell.value:
-                        addr_text = str(val_cell.value)
-                        pin_match = re.search(r"\b[1-9][0-9]{5}\b", addr_text)
-                        if pin_match:
-                            val_cell.value = pin_match.group(0)
-                        else:
-                            val_cell.value = ""
+        # Shipping address → keep only pincode
+        for row in ws.iter_rows(min_row=1, max_row=table_header_row):
+            field_cell = row[0]
+            if field_cell.value and str(field_cell.value).strip().lower() == "shipping address":
+                val_cell = row[1]
+                if val_cell.value:
+                    addr_text = str(val_cell.value)
+                    pin_match = re.search(r"\b[1-9][0-9]{5}\b", addr_text)
+                    if pin_match:
+                        val_cell.value = pin_match.group(0)
+                    else:
+                        val_cell.value = ""
 
             # Lock summary as text
-            for row in ws.iter_rows():
-                if row[0].value and str(row[0].value).strip().lower() in ["total base value", "total tax", "grand total"]:
-                    row[1].value = str(row[1].value)
-                    row[1].number_format = "@"
+        for row in ws.iter_rows():
+            if row[0].value and str(row[0].value).strip().lower() in ["total base value", "total tax", "grand total"]:
+                row[1].value = str(row[1].value)
+                row[1].number_format = "@"
 
-            for row in ws.iter_rows():
-                for cell in row:
-                    cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
 
-            # Fix EAN column
-            ean_col_idx = None
-            for col in ws.iter_cols(min_row=table_header_row + 1, max_row=table_header_row + 1):
-                if str(col[0].value).strip().lower() == "ean":
-                    ean_col_idx = col[0].column
-                    break
+        # Fix EAN column
+        ean_col_idx = None
+        for col in ws.iter_cols(min_row=table_header_row + 1, max_row=table_header_row + 1):
+            if str(col[0].value).strip().lower() == "ean":
+                ean_col_idx = col[0].column
+                break
 
-            if ean_col_idx:
-                start = table_header_row + 2
-                end = start + len(upd) - 1
+        if ean_col_idx:
+            start = table_header_row + 2
+            end = start + len(upd) - 1
 
-                for r in range(start, end + 1):
-                    cell = ws.cell(row=r, column=ean_col_idx)
-                    if cell.value not in ("", None):
-                        try:
-                            cell.value = str(cell.value).split(".")[0]
-                        except:
-                            pass
-                        cell.number_format = "@"
+            for r in range(start, end + 1):
+                cell = ws.cell(row=r, column=ean_col_idx)
+                if cell.value not in ("", None):
+                    try:
+                        cell.value = str(cell.value).split(".")[0]
+                    except:
+                        pass
+                    cell.number_format = "@"
 
-            # Force column widths
-            fixed_widths = {
-                "A": 13, "B": 18, "C": 36, "D": 12, "E": 9,
-                "F": 9, "G": 11, "H": 7, "I": 12, "J": 12
-            }
+        # Force column widths
+        fixed_widths = {
+            "A": 13, "B": 18, "C": 36, "D": 12, "E": 9,
+            "F": 9, "G": 11, "H": 7, "I": 12, "J": 12
+        }
 
-            for col_letter, width in fixed_widths.items():
-                ws.column_dimensions[col_letter].width = width
+        for col_letter, width in fixed_widths.items():
+            ws.column_dimensions[col_letter].width = width
 
-            # Auto row height
-            for row in ws.iter_rows():
-                row_idx = row[0].row
-                max_lines = 1
+        # Auto row height
+        for row in ws.iter_rows():
+            row_idx = row[0].row
+            max_lines = 1
 
-                for cell in row:
-                    if cell.value:
-                        text = str(cell.value)
-                        col_width = ws.column_dimensions[cell.column_letter].width or 15
-                        est_lines = ceil(len(text) / (col_width * 1.1))
-                        max_lines = max(max_lines, est_lines, text.count("\n") + 1)
+            for cell in row:
+                if cell.value:
+                    text = str(cell.value)
+                    col_width = ws.column_dimensions[cell.column_letter].width or 15
+                    est_lines = ceil(len(text) / (col_width * 1.1))
+                    max_lines = max(max_lines, est_lines, text.count("\n") + 1)
 
-                ws.row_dimensions[row_idx].height = max(18, max_lines * 15)
+            ws.row_dimensions[row_idx].height = max(18, max_lines * 15)
             
-            # Adjust specific row heights
-            for row in ws.iter_rows(min_row=1, max_row=8):
-                field_cell = row[0]
-                if field_cell.value and str(field_cell.value).strip().lower() == "shipping address":
-                    r = field_cell.row
-                    ws.row_dimensions[r].height = 45
+        # Adjust specific row heights
+        for row in ws.iter_rows(min_row=1, max_row=8):
+            field_cell = row[0]
+            if field_cell.value and str(field_cell.value).strip().lower() == "shipping address":
+                r = field_cell.row
+                ws.row_dimensions[r].height = 45
             
-            ws.row_dimensions[10].height = 30
+        ws.row_dimensions[10].height = 30
 
-            # Print settings
-            ws.page_setup.paperSize = ws.PAPERSIZE_A4
-            ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
-            ws.page_setup.scale = 100
-            ws.page_margins.left = 0.3
-            ws.page_margins.right = 0.3
-            ws.page_margins.top = 0.5
-            ws.page_margins.bottom = 0.5
+        # Print settings
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.scale = 100
+        ws.page_margins.left = 0.3
+        ws.page_margins.right = 0.3
+        ws.page_margins.top = 0.5
+        ws.page_margins.bottom = 0.5
 
-            # Add gridlines
-            thin_border = Border(
-                left=Side(style='thin'),
-                right=Side(style='thin'),
-                top=Side(style='thin'),
-                bottom=Side(style='thin')
-            )
+        # Add gridlines
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
             
-            header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
+        header_fill = PatternFill(start_color="D3D3D3", end_color="D3D3D3", fill_type="solid")
             
-            num_cols = ws.max_column
+        num_cols = ws.max_column
             
-            # Header fields (Rows 1-8, Columns A-B)
-            for row in range(1, 9):
-                for col in range(1, 3):
-                    cell = ws.cell(row=row, column=col)
-                    cell.border = thin_border
-                    if col == 1:
-                        cell.font = Font(bold=True)
+       # Header fields (Rows 1-8, Columns A-B)
+        for row in range(1, 9):
+            for col in range(1, 3):
+                cell = ws.cell(row=row, column=col)
+                cell.border = thin_border
+                if col == 1:
+                    cell.font = Font(bold=True)
             
             # Table header row (Row 10, all columns)
-            for col in range(1, num_cols + 1):
-                cell = ws.cell(row=10, column=col)
-                cell.border = thin_border
-                cell.font = Font(bold=True)
-                cell.fill = header_fill
-                cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        for col in range(1, num_cols + 1):
+            cell = ws.cell(row=10, column=col)
+            cell.border = thin_border
+            cell.font = Font(bold=True)
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             
             # Table content (Row 11 onwards)
-            last_data_row = 10
-            for row_idx in range(11, ws.max_row + 1):
-                has_data = False
-                for col in range(1, min(5, num_cols + 1)):
-                    if ws.cell(row=row_idx, column=col).value:
-                        has_data = True
-                        break
-                if has_data:
-                    last_data_row = row_idx
-                else:
+        last_data_row = 10
+        for row_idx in range(11, ws.max_row + 1):
+            has_data = False
+            for col in range(1, min(5, num_cols + 1)):
+                if ws.cell(row=row_idx, column=col).value:
+                    has_data = True
                     break
+            if has_data:
+                last_data_row = row_idx
+            else:
+                break
             
-            for row in range(11, last_data_row + 1):
-                for col in range(1, num_cols + 1):
-                    cell = ws.cell(row=row, column=col)
-                    cell.border = thin_border
+        for row in range(11, last_data_row + 1):
+            for col in range(1, num_cols + 1):
+                cell = ws.cell(row=row, column=col)
+                cell.border = thin_border
             
             # Summary fields (3 rows, Columns A-B)
-            summary_start = last_data_row + 2
-            for row in range(summary_start, summary_start + 3):
-                for col in range(1, 3):
-                    cell = ws.cell(row=row, column=col)
-                    cell.border = thin_border
-                    if col == 1:
-                        cell.font = Font(bold=True)
+        summary_start = last_data_row + 2
+        for row in range(summary_start, summary_start + 3):
+            for col in range(1, 3):
+                cell = ws.cell(row=row, column=col)
+                cell.border = thin_border
+                if col == 1:
+                    cell.font = Font(bold=True)
 
-            wb.save(final_path)
+        wb.save(final_path)
 
-            st.success("✅ Final PO formatted and ready!")
+        st.success("✅ Final PO formatted and ready!")
 
             # Store in session state
-            st.session_state['final_path'] = final_path
-            st.session_state['final_name'] = os.path.basename(final_path)
-            st.session_state['po_number'] = po_number
-            st.session_state['party'] = party
-            st.session_state['party_code_value'] = party_code_value
+        st.session_state['final_path'] = final_path
+        st.session_state['final_name'] = os.path.basename(final_path)
+        st.session_state['po_number'] = po_number
+        st.session_state['party'] = party
+        st.session_state['party_code_value'] = party_code_value
 
             # Merge MRP from master for platforms where PO has no MRP
-            if "MRP_MASTER" in merged.columns:
-                upd["MRP"] = pd.to_numeric(merged["MRP_MASTER"], errors="coerce").fillna(
-                    pd.to_numeric(merged.get("MRP_PO", 0), errors="coerce").fillna(0)
-                )
-            st.session_state['upd_df'] = upd.copy()
+        if "MRP_MASTER" in merged.columns:
+            upd["MRP"] = pd.to_numeric(merged["MRP_MASTER"], errors="coerce").fillna(
+                pd.to_numeric(merged.get("MRP_PO", 0), errors="coerce").fillna(0)
+            )
+        st.session_state['upd_df'] = upd.copy()
             
             # Extract PO Date and Expiry Date
-            po_date = ""
-            po_expiry_date = ""
-            for i in range(table_header_row):
-                #row_vals = final_raw.iloc[i].astype(str).str.lower().tolist()
-                row_vals = " ".join([str(x) for x in final_raw.iloc[i].fillna("").tolist()]).lower()
-                if "po date" in row_vals or "po_date" in row_vals:
-                    try:
-                        po_date = str(final_raw.iloc[i, 1]).strip()
-                    except:
-                        pass
-                if "po expiry date" in row_vals or "po_expiry_date" in row_vals:
-                    try:
-                        po_expiry_date = str(final_raw.iloc[i, 1]).strip()
-                    except:
-                        pass
-            # Format dates to DD-MM-YYYY before storing
-            from datetime import datetime
+        po_date = ""
+        po_expiry_date = ""
+        for i in range(table_header_row):
+            #row_vals = final_raw.iloc[i].astype(str).str.lower().tolist()
+            row_vals = " ".join([str(x) for x in final_raw.iloc[i].fillna("").tolist()]).lower()
+            if "po date" in row_vals or "po_date" in row_vals:
+                try:
+                    po_date = str(final_raw.iloc[i, 1]).strip()
+                except:
+                    pass
+            if "po expiry date" in row_vals or "po_expiry_date" in row_vals:
+                try:
+                    po_expiry_date = str(final_raw.iloc[i, 1]).strip()
+                except:
+                    pass
+        # Format dates to DD-MM-YYYY before storing
+        from datetime import datetime
             
-            def quick_format_date(d):
-                if not d or str(d).strip() in ['', 'nan']:
-                    return ""
-                d = str(d).replace(".", "").strip()
-                for fmt in ["%b %d, %Y", "%B %d, %Y", "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"]:
-                    try:
-                        return datetime.strptime(d, fmt).strftime("%d-%m-%Y")
-                    except:
-                        pass
-                return d
+        def quick_format_date(d):
+            if not d or str(d).strip() in ['', 'nan']:
+                return ""
+            d = str(d).replace(".", "").strip()
+            for fmt in ["%b %d, %Y", "%B %d, %Y", "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d"]:
+                try:
+                    return datetime.strptime(d, fmt).strftime("%d-%m-%Y")
+                except:
+                    pass
+            return d
 
-            st.session_state['po_date'] = po_date
-            st.session_state['po_expiry_date'] = po_expiry_date
-            st.rerun()
+        st.session_state['po_date'] = po_date
+        st.session_state['po_expiry_date'] = po_expiry_date
+        st.rerun()
+
 
 else:
     st.info("Upload both PO and Master file to enable validation.")
