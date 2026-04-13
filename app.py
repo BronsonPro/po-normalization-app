@@ -714,7 +714,9 @@ if po_df is not None and master_df is not None:
         else:
             if "EAN" in po.columns:
                 po = po.drop_duplicates(subset=["EAN"], keep="first")
-        
+
+        # Convert EAN to string before sorting to handle mixed types
+        master["EAN"] = master["EAN"].astype(str)
         master = master.sort_values("EAN").drop_duplicates(subset=["EAN"], keep="first")
 
         # Define required columns per party
