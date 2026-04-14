@@ -7,7 +7,7 @@ import re
 
 def extract_po_header(pdf_path):
 
-    party_name = "DMart"
+    party_name = "D-MART"
     po_no = ""
     po_date = ""
     po_expiry = ""
@@ -87,9 +87,33 @@ def extract_line_items(pdf_path):
     while i < len(all_lines):
         line = all_lines[i].strip()
 
-        # Match product line 1:
+        # Try NEW FORMAT first (2026): Match product line 1 with IGST column
+        # "1 2000054628 8214 Bronson Professional EA 120 100.00 33.90 - - - 18.00 - 40.00 4,800.00"
+        m_new = re.match(
+            r'^(\d+)\s+'                        # SR No
+            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
+            r'(\d{4})\s+'                       # HSN part 1 (4 digits)
+            r'(.+?)\s+'                         # Description part 1
+            r'(EA|1\.00)\s+'                    # UOM
+            r'(\d+)\s+'                         # Qty
+            r'([\d,]+\.?\d*)\s+'               # MRP
+            r'([\d,]+\.?\d*)\s+'               # Basic Price
+            r'[-\d.]+\s+'                       # Skip DP
+            r'[-\d.]+\s+'                       # Skip DV
+            r'[-\d.]+\s+'                       # Skip TT
+            r'[-\d.]+\s+'                       # Skip CGST%
+            r'[-\d.]+\s+'                       # Skip SGST%
+            r'[-\d.]+\s+'                       # Skip CESS%
+            r'([\d.]+)\s+'                      # IGST%
+            r'[-\d.]+\s+'                       # Skip UGST%
+            r'([\d,]+\.?\d*)\s+'               # Landed Price
+            r'([\d,]+\.?\d*)$',                # Total Value
+            line
+        )
+
+        # Try OLD FORMAT (pre-2026): CGST+SGST format
         # "1 7452225170304 9603 BronsonPSelfClean EA 60 325.00 67.81 9.00 9.00 - - - 80.02 4,800.90"
-        m = re.match(
+        m_old = re.match(
             r'^(\d+)\s+'                        # SR No
             r'(\d{13})\s+'                      # EAN (13 digits)
             r'(\d{4,8})\s+'                     # HSN (partial - first part)
@@ -105,22 +129,41 @@ def extract_line_items(pdf_path):
             line
         )
 
-        if m:
-            sr_no = m.group(1)
-            ean = m.group(2)
-            hsn_part1 = m.group(3)
-            qty = m.group(5)
-            mrp = m.group(6).replace(",", "")
-            basic = m.group(7).replace(",", "")
-            cgst = float(m.group(8))
-            sgst = float(m.group(9))
-            landed = m.group(10).replace(",", "")
-            total = m.group(11).replace(",", "")
-
+        matched = False
+        
+        if m_new:
+            # NEW FORMAT
+            sr_no = m_new.group(1)
+            ean = m_new.group(2)
+            hsn_part1 = m_new.group(3)
+            desc_part1 = m_new.group(4).strip()
+            qty = m_new.group(6)
+            mrp = m_new.group(7).replace(",", "")
+            basic = m_new.group(8).replace(",", "")
+            igst = float(m_new.group(9)) if m_new.group(9) != '-' else 0.0
+            landed = m_new.group(10).replace(",", "")
+            total = m_new.group(11).replace(",", "")
+            gst_pct = igst
+            matched = True
+            
+        elif m_old:
+            # OLD FORMAT
+            sr_no = m_old.group(1)
+            ean = m_old.group(2)
+            hsn_part1 = m_old.group(3)
+            desc_part1 = m_old.group(4).strip()
+            qty = m_old.group(5)
+            mrp = m_old.group(6).replace(",", "")
+            basic = m_old.group(7).replace(",", "")
+            cgst = float(m_old.group(8))
+            sgst = float(m_old.group(9))
+            landed = m_old.group(10).replace(",", "")
+            total = m_old.group(11).replace(",", "")
             gst_pct = round(cgst + sgst, 2)
+            matched = True
 
-            # Line 2 has: article_no + hsn_part2 + desc_part2 + 1.00 + cgst_val + sgst_val + ...
-            # e.g. "140006766 2900 ingHairBrush-1N 1.00 366.17 366.17 - - -"
+        if matched:
+            # Line 2 has: article_no + hsn_part2 + desc_part2 + 1.00 + ...
             desc_part2 = ""
             hsn_part2 = ""
             if i + 1 < len(all_lines):
@@ -133,8 +176,7 @@ def extract_line_items(pdf_path):
             # Full HSN code
             hsn = hsn_part1 + hsn_part2
 
-            # Full description - clean up concatenated words
-            desc_part1 = m.group(4).strip()
+            # Full description
             product_name = (desc_part1 + " " + desc_part2).strip()
 
             items.append({
