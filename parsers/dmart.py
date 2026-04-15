@@ -103,14 +103,15 @@ def extract_line_items(pdf_path):
             line
         )
 
-        # OLD FORMAT (CGST+SGST): Handle rows with AND without DP column more carefully
-        # The challenge: Some rows have DP, some don't, and we need to identify CGST/SGST correctly
-        # CGST and SGST are always single-digit decimals like 9.00, 12.00, 18.00
-        # DP can be larger values like 20.00, 25.00, etc.
+        # OLD FORMAT (CGST+SGST): Handle rows with varying columns
+        # Some rows have all columns, some are missing certain values
+        # Pattern: SR EAN HSN Desc EA Qty MRP Basic [DP?] CGST% SGST% ... Landed Total
         
         m_old = None
+        cgst_val = 0.0
+        sgst_val = 0.0
         
-        # Strategy: Match the pattern more flexibly and check which numbers are GST rates
+        # More flexible pattern - capture all numeric values after Basic Price
         m_old_flexible = re.match(
             r'^(\d+)\s+'                        # 1: SR No
             r'(\d{10,13})\s+'                   # 2: EAN
@@ -120,36 +121,51 @@ def extract_line_items(pdf_path):
             r'(\d+)\s+'                         # 5: Qty
             r'([\d,]+\.?\d*)\s+'               # 6: MRP
             r'([\d,]+\.?\d*)\s+'               # 7: Basic Price
-            r'([\d,]+\.?\d*)\s+'               # 8: Next number (could be DP or CGST)
-            r'([\d.]+)\s+'                      # 9: Next number (could be CGST or SGST)
-            r'([\d.]+)\s+'                      # 10: Next number (could be SGST or something else)
-            r'.*?'                              # Skip other columns
-            r'([\d,]+\.?\d*)\s+'               # 11: Landed Price
-            r'([\d,]+\.?\d*)$',                # 12: Total Value
+            r'(.+?)\s+'                         # 8: Everything between Basic and Landed (flexible)
+            r'([\d,]+\.?\d*)\s+'               # 9: Landed Price (second-to-last number)
+            r'([\d,]+\.?\d*)$',                # 10: Total Value (last number)
             line
         )
         
         if m_old_flexible:
-            # Determine if there's a DP column by checking the values
-            val1 = float(m_old_flexible.group(8).replace(",", ""))  # Could be DP or CGST
-            val2 = float(m_old_flexible.group(9))                    # Could be CGST or SGST
-            val3 = float(m_old_flexible.group(10))                   # Could be SGST or other
+            # Extract the middle section and find CGST/SGST
+            middle_section = m_old_flexible.group(8).strip()
+            # Find all decimal numbers in the middle section
+            numbers = re.findall(r'[\d.]+', middle_section)
             
-            # CGST and SGST are typically 9.00, 12.00, 14.00, 18.00 (single/low double digits)
-            # DP is typically 20.00, 25.00, 30.00 or higher
-            # If val1 is > 18, it's likely DP, so CGST=val2, SGST=val3
-            # If val1 is <= 18, it's likely CGST, so CGST=val1, SGST=val2
+            # Convert to floats, filtering out obvious non-GST values (dashes become empty)
+            numeric_values = []
+            for num in numbers:
+                try:
+                    val = float(num)
+                    if val > 0:  # Skip zeros and negatives
+                        numeric_values.append(val)
+                except:
+                    pass
             
-            if val1 > 18.0:
-                # Has DP column: val1=DP, val2=CGST, val3=SGST
-                cgst_val = val2
-                sgst_val = val3
+            # Logic to find CGST and SGST:
+            # - They are typically equal (e.g., 9.00 and 9.00 for 18% total)
+            # - They are small values (9, 12, 14, 18 range)
+            # - They appear as consecutive values
+            
+            found_gst = False
+            for i in range(len(numeric_values) - 1):
+                val1 = numeric_values[i]
+                val2 = numeric_values[i + 1]
+                
+                # Check if both values look like GST rates (typically <= 18)
+                # and are equal or close (CGST = SGST in most cases)
+                if val1 <= 18.0 and val2 <= 18.0 and abs(val1 - val2) < 1.0:
+                    cgst_val = val1
+                    sgst_val = val2
+                    found_gst = True
+                    break
+            
+            if found_gst:
+                m_old = m_old_flexible
             else:
-                # No DP column: val1=CGST, val2=SGST
-                cgst_val = val1
-                sgst_val = val2
-            
-            m_old = m_old_flexible
+                # Fallback: if we can't find matching CGST/SGST, skip this row
+                m_old = None
 
         matched = False
         
@@ -180,8 +196,8 @@ def extract_line_items(pdf_path):
             # Use the detected cgst_val and sgst_val from the smart detection above
             cgst = cgst_val
             sgst = sgst_val
-            landed = m_old.group(11).replace(",", "")
-            total = m_old.group(12).replace(",", "")
+            landed = m_old.group(9).replace(",", "")
+            total = m_old.group(10).replace(",", "")
             gst_pct = cgst + sgst
             matched = True
 
