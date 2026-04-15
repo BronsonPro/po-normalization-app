@@ -1,1 +1,301 @@
+import pdfplumber
+import pandas as pd
+import re
 
+
+# ------------------ HEADER EXTRACTION ------------------
+
+def extract_po_header(pdf_path):
+
+    party_name = "D-MART"
+    po_no = ""
+    po_date = ""
+    po_expiry = ""
+    shipping_address = ""
+    gst_no = ""
+
+    with pdfplumber.open(pdf_path) as pdf:
+        text = pdf.pages[0].extract_text() or ""
+
+    for line in text.split("\n"):
+
+        # PO Number in title line: "AvenueE-CommerceLtd PurchaseOrder 4501879572"
+        m = re.search(r'PurchaseOrder\s+(\d+)', line)
+        if m:
+            po_no = m.group(1).strip()
+
+        # PO Date and Validity: "PurchaseOrderDate:27.12.2025 POValidity:27.12.2025to27.01.2026"
+        m = re.search(r'PurchaseOrderDate:([\d.]+)', line)
+        if m:
+            po_date = m.group(1).strip()
+
+        m = re.search(r'POValidity:[\d.]+to([\d.]+)', line)
+        if m:
+            po_expiry = m.group(1).strip()
+
+        # GST - Ship To GST (buyer GST)
+        m = re.search(r'GST#([A-Z0-9]{15})', line)
+        if m and not gst_no:
+            gst_no = m.group(1).strip()
+
+    # Shipping address - collect all lines from ShipTo to PurchaseOrderDate
+    lines = text.split("\n")
+    ship_section = ""
+    in_ship = False
+    for line in lines:
+        if "ShipTo" in line:
+            in_ship = True
+        if in_ship:
+            ship_section += line + " "
+        if "PurchaseOrderDate" in line and in_ship:
+            break
+    
+    # Find all 6-digit pincodes
+    all_pins = re.findall(r'\b(\d{6})\b', ship_section)
+    # The shipping pincode typically appears twice (Bill To and Ship To columns)
+    # Count occurrences and take the one that appears most (excluding vendor code 103006)
+    from collections import Counter
+    pin_counts = Counter([pin for pin in all_pins if not pin.startswith('103')])
+    if pin_counts:
+        # Take the most common pincode
+        shipping_address = pin_counts.most_common(1)[0][0]
+
+    return {
+        "Party Name": party_name,
+        "PO No": po_no,
+        "PO Date": po_date,
+        "PO Expiry Date": po_expiry,
+        "Shipping Address": shipping_address,
+        "GST #": gst_no,
+    }
+
+
+# ------------------ LINE ITEMS EXTRACTION ------------------
+
+def extract_line_items(pdf_path):
+
+    all_lines = []
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            all_lines.extend(text.split("\n"))
+
+    items = []
+
+    i = 0
+    while i < len(all_lines):
+        line = all_lines[i].strip()
+
+        # Try NEW FORMAT first (2026): Match product line 1 with IGST column
+        # Actual format: "1 2000054628 8214 BronsonProfessional EA 120 100.00 33.90 - - - 18.00 - 40.00 4,800.00"
+        m_new = re.match(
+            r'^(\d+)\s+'                        # SR No
+            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
+            r'(\d{4})\s+'                       # HSN part 1 (4 digits)
+            r'(\S+)\s+'                         # Description (no spaces - concatenated)
+            r'EA\s+'                            # UOM
+            r'(\d+)\s+'                         # Qty
+            r'([\d,]+\.?\d*)\s+'               # MRP
+            r'([\d,]+\.?\d*)\s+'               # Basic Price
+            r'-\s+-\s+-\s+'                     # Skip 3 dashes (DP DV TT or similar)
+            r'([\d.]+)\s+'                      # IGST%
+            r'-\s+'                             # Skip dash (UGST%)
+            r'([\d,]+\.?\d*)\s+'               # Landed Price
+            r'([\d,]+\.?\d*)$',                # Total Value
+            line
+        )
+
+        # Try OLD FORMAT (pre-2026): CGST+SGST format with optional DP column
+        # Row with DP: "1 2000054628 8214 Bronson Professional EA 120 100.00 42.37 20.00 9.00 9.00 - - - 40.00 4,800.00"
+        # Row without DP: "3 4506789843891 3307 Bronson Professional EA 12 200.00 46.61 9.00 9.00 - - - 55.00 660.00"
+        # Strategy: Try matching without DP first, then with DP if that fails
+        
+        # First try: No DP column
+        m_old_no_dp = re.match(
+            r'^(\d+)\s+'                        # SR No
+            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
+            r'(\d{4,8})\s+'                     # HSN (partial - first part)
+            r'(.+?)\s+'                         # Description part 1
+            r'EA\s+'                            # UOM
+            r'(\d+)\s+'                         # Qty
+            r'([\d,]+\.?\d*)\s+'               # MRP
+            r'([\d,]+\.?\d*)\s+'               # Basic Price
+            r'([\d.]+)\s+'                      # CGST%
+            r'([\d.]+)\s+'                      # SGST%
+            r'.*?'                              # Skip other columns
+            r'([\d,]+\.?\d*)\s+'               # Landed Price
+            r'([\d,]+\.?\d*)$',                # Total Value
+            line
+        )
+        
+        # Second try: With DP column
+        m_old_with_dp = re.match(
+            r'^(\d+)\s+'                        # SR No
+            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
+            r'(\d{4,8})\s+'                     # HSN (partial - first part)
+            r'(.+?)\s+'                         # Description part 1
+            r'EA\s+'                            # UOM
+            r'(\d+)\s+'                         # Qty
+            r'([\d,]+\.?\d*)\s+'               # MRP
+            r'([\d,]+\.?\d*)\s+'               # Basic Price
+            r'[\d,]+\.?\d*\s+'                 # DP column (skip)
+            r'([\d.]+)\s+'                      # CGST%
+            r'([\d.]+)\s+'                      # SGST%
+            r'.*?'                              # Skip other columns
+            r'([\d,]+\.?\d*)\s+'               # Landed Price
+            r'([\d,]+\.?\d*)$',                # Total Value
+            line
+        )
+        
+        m_old = m_old_no_dp or m_old_with_dp
+
+        matched = False
+        
+        if m_new:
+            # NEW FORMAT
+            sr_no = m_new.group(1)      # SR No
+            ean = m_new.group(2)        # EAN
+            hsn_part1 = m_new.group(3)  # HSN part 1
+            desc_part1 = m_new.group(4).strip()  # Description
+            qty = m_new.group(5)        # Qty
+            mrp = m_new.group(6).replace(",", "")    # MRP
+            basic = m_new.group(7).replace(",", "")  # Basic Price
+            igst = float(m_new.group(8)) if m_new.group(8) != '-' else 0.0  # IGST%
+            landed = m_new.group(9).replace(",", "")   # Landed Price
+            total = m_new.group(10).replace(",", "")   # Total Value
+            gst_pct = igst
+            matched = True
+            
+        elif m_old:
+            # OLD FORMAT
+            sr_no = m_old.group(1)      # SR No
+            ean = m_old.group(2)        # EAN
+            hsn_part1 = m_old.group(3)  # HSN part 1
+            desc_part1 = m_old.group(4).strip()  # Description
+            qty = m_old.group(5)        # Qty
+            mrp = m_old.group(6).replace(",", "")    # MRP
+            basic = m_old.group(7).replace(",", "")  # Basic Price
+            cgst = float(m_old.group(8))   # CGST%
+            sgst = float(m_old.group(9))   # SGST%
+            landed = m_old.group(10).replace(",", "")  # Landed Price
+            total = m_old.group(11).replace(",", "")   # Total Value
+            gst_pct = cgst + sgst  # Don't round - keep exact sum
+            matched = True
+
+        if matched:
+            # Line 2 has: article_no + hsn_part2 + desc_part2 + 1.00 + ...
+            desc_part2 = ""
+            hsn_part2 = ""
+            if i + 1 < len(all_lines):
+                next_line = all_lines[i + 1].strip()
+                m2 = re.match(r'^(\d+)\s+(\d+)\s+(.+?)\s+1\.00', next_line)
+                if m2:
+                    hsn_part2 = m2.group(2)
+                    desc_part2 = m2.group(3).strip()
+
+            # Full HSN code
+            hsn = hsn_part1 + hsn_part2
+
+            # Full description
+            product_name = (desc_part1 + " " + desc_part2).strip()
+
+            items.append({
+                "Sr #": int(sr_no),
+                "EAN": ean,
+                "Product Name": product_name,
+                "HSN Code": hsn,
+                "Quantity": int(qty),
+                "MRP": float(mrp),
+                "Base Rate": float(basic),
+                "GST %": gst_pct,
+                "Total": float(total),
+            })
+
+        i += 1
+
+    return pd.DataFrame(items)
+
+
+# ------------------ SUMMARY EXTRACTION ------------------
+
+def extract_summary(pdf_path):
+
+    grand_total = 0.0
+
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            for line in text.split("\n"):
+                m = re.match(r'^Total\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)$', line)
+                if m:
+                    grand_total = float(m.group(2).replace(",", ""))
+                    break
+
+    return grand_total
+
+
+# ================== PUBLIC FUNCTION ==================
+
+def convert_pdf_to_excel(pdf_path, output_excel_path):
+
+    header_data = extract_po_header(pdf_path)
+    products = extract_line_items(pdf_path)
+
+    if products.empty:
+        raise Exception("No line items found in DMart PO")
+
+    grand_total = extract_summary(pdf_path)
+    total_base = round((products["Base Rate"] * products["Quantity"]).sum(), 2)
+    total_tax = round(grand_total - total_base, 2)
+
+    summary_data = {
+        "Total Base Value": f"{total_base:.2f}",
+        "Total Tax": f"{total_tax:.2f}",
+        "Grand Total": f"{grand_total:.2f}",
+    }
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+
+    row_offset = 1
+
+    # Write header data
+    for field, value in header_data.items():
+        ws.cell(row=row_offset, column=1, value=field)
+        ws.cell(row=row_offset, column=2, value=value)
+        row_offset += 1
+
+    row_offset += 2
+
+    # Write product headers
+    headers = ["Sr #", "EAN", "Product Name", "HSN Code", "Quantity", "MRP", "Base Rate", "GST %", "Total"]
+    for col, header in enumerate(headers, 1):
+        ws.cell(row=row_offset, column=col, value=header)
+
+    row_offset += 1
+
+    # Write product data
+    for _, row in products.iterrows():
+        ws.cell(row=row_offset, column=1, value=row["Sr #"])
+        ws.cell(row=row_offset, column=2, value=row["EAN"])
+        ws.cell(row=row_offset, column=3, value=row["Product Name"])
+        ws.cell(row=row_offset, column=4, value=row["HSN Code"])
+        ws.cell(row=row_offset, column=5, value=row["Quantity"])
+        ws.cell(row=row_offset, column=6, value=row["MRP"])
+        ws.cell(row=row_offset, column=7, value=row["Base Rate"])
+        ws.cell(row=row_offset, column=8, value=row["GST %"])
+        ws.cell(row=row_offset, column=9, value=row["Total"])
+        row_offset += 1
+
+    row_offset += 2
+
+    # Write summary data
+    for field, value in summary_data.items():
+        ws.cell(row=row_offset, column=1, value=field)
+        ws.cell(row=row_offset, column=2, value=value)
+        row_offset += 1
+
+    wb.save(output_excel_path)
