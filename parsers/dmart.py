@@ -98,11 +98,9 @@ def extract_line_items(pdf_path):
             r'(\d+)\s+'                         # Qty
             r'([\d,]+\.?\d*)\s+'               # MRP
             r'([\d,]+\.?\d*)\s+'               # Basic Price
-            r'[-\s]+'                           # Skip dashes
-            r'[-\s]+'                           # Skip dashes
-            r'[-\s]+'                           # Skip dashes
+            r'-\s+-\s+-\s+'                     # Skip 3 dashes (DP DV TT or similar)
             r'([\d.]+)\s+'                      # IGST%
-            r'[-\s]+'                           # Skip dash
+            r'-\s+'                             # Skip dash (UGST%)
             r'([\d,]+\.?\d*)\s+'               # Landed Price
             r'([\d,]+\.?\d*)$',                # Total Value
             line
@@ -204,7 +202,7 @@ def extract_line_items(pdf_path):
 
             items.append({
                 "Sr #": int(sr_no),
-                "EAN": f"'{ean}",  # Prefix with apostrophe to force text format in Excel
+                "EAN": ean,
                 "Product Name": product_name,
                 "HSN Code": hsn,
                 "Quantity": int(qty),
