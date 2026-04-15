@@ -130,16 +130,16 @@ def extract_line_items(pdf_path):
         
         if m_new:
             # NEW FORMAT
-            sr_no = m_new.group(1)
-            ean = m_new.group(2)
-            hsn_part1 = m_new.group(3)
-            desc_part1 = m_new.group(4).strip()
-            qty = m_new.group(6)
-            mrp = m_new.group(7).replace(",", "")
-            basic = m_new.group(8).replace(",", "")
-            igst = float(m_new.group(9)) if m_new.group(9) != '-' else 0.0
-            landed = m_new.group(10).replace(",", "")
-            total = m_new.group(11).replace(",", "")
+            sr_no = m_new.group(1)      # SR No
+            ean = m_new.group(2)        # EAN
+            hsn_part1 = m_new.group(3)  # HSN part 1
+            desc_part1 = m_new.group(4).strip()  # Description
+            qty = m_new.group(5)        # Qty
+            mrp = m_new.group(6).replace(",", "")    # MRP
+            basic = m_new.group(7).replace(",", "")  # Basic Price
+            igst = float(m_new.group(8)) if m_new.group(8) != '-' else 0.0  # IGST%
+            landed = m_new.group(9).replace(",", "")   # Landed Price
+            total = m_new.group(10).replace(",", "")   # Total Value
             gst_pct = igst
             matched = True
             
