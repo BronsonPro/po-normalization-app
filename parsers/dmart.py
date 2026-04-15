@@ -108,21 +108,23 @@ def extract_line_items(pdf_path):
             line
         )
 
-        # Try OLD FORMAT (pre-2026): CGST+SGST format
-        # "1 7452225170304 9603 BronsonPSelfClean EA 60 325.00 67.81 9.00 9.00 - - - 80.02 4,800.90"
+        # Try OLD FORMAT (pre-2026): CGST+SGST format with DP column
+        # "1 2000054628 8214 Bronson Professional EA 120 100.00 42.37 20.00 9.00 9.00 - - - 40.00 4,800.00"
         m_old = re.match(
             r'^(\d+)\s+'                        # SR No
-            r'(\d{13})\s+'                      # EAN (13 digits)
+            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
             r'(\d{4,8})\s+'                     # HSN (partial - first part)
             r'(.+?)\s+'                         # Description part 1
             r'EA\s+'                            # UOM
-            r'(\d+)\s+'                        # Qty
-            r'([\d,]+\.?\d*)\s+'              # MRP
-            r'([\d,]+\.?\d*)\s+'              # Basic Price
-            r'([\d.]+)\s+'                     # CGST%
-            r'([\d.]+)\s+'                     # SGST%
-            r'.*?([\d,]+\.?\d*)\s+'           # Landed Price
-            r'([\d,]+\.?\d*)$',               # Total Value
+            r'(\d+)\s+'                         # Qty
+            r'([\d,]+\.?\d*)\s+'               # MRP
+            r'([\d,]+\.?\d*)\s+'               # Basic Price
+            r'[\d,]+\.?\d*\s+'                 # Skip DP
+            r'([\d.]+)\s+'                      # CGST%
+            r'([\d.]+)\s+'                      # SGST%
+            r'.*?'                              # Skip other columns
+            r'([\d,]+\.?\d*)\s+'               # Landed Price
+            r'([\d,]+\.?\d*)$',                # Total Value
             line
         )
 
@@ -145,18 +147,18 @@ def extract_line_items(pdf_path):
             
         elif m_old:
             # OLD FORMAT
-            sr_no = m_old.group(1)
-            ean = m_old.group(2)
-            hsn_part1 = m_old.group(3)
-            desc_part1 = m_old.group(4).strip()
-            qty = m_old.group(5)
-            mrp = m_old.group(6).replace(",", "")
-            basic = m_old.group(7).replace(",", "")
-            cgst = float(m_old.group(8))
-            sgst = float(m_old.group(9))
-            landed = m_old.group(10).replace(",", "")
-            total = m_old.group(11).replace(",", "")
-            gst_pct = round(cgst + sgst, 2)
+            sr_no = m_old.group(1)      # SR No
+            ean = m_old.group(2)        # EAN
+            hsn_part1 = m_old.group(3)  # HSN part 1
+            desc_part1 = m_old.group(4).strip()  # Description
+            qty = m_old.group(5)        # Qty
+            mrp = m_old.group(6).replace(",", "")    # MRP
+            basic = m_old.group(7).replace(",", "")  # Basic Price
+            cgst = float(m_old.group(8))   # CGST%
+            sgst = float(m_old.group(9))   # SGST%
+            landed = m_old.group(10).replace(",", "")  # Landed Price
+            total = m_old.group(11).replace(",", "")   # Total Value
+            gst_pct = cgst + sgst  # Don't round - keep exact sum
             matched = True
 
         if matched:
