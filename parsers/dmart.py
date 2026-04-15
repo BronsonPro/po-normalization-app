@@ -108,9 +108,13 @@ def extract_line_items(pdf_path):
             line
         )
 
-        # Try OLD FORMAT (pre-2026): CGST+SGST format with DP column
-        # "1 2000054628 8214 Bronson Professional EA 120 100.00 42.37 20.00 9.00 9.00 - - - 40.00 4,800.00"
-        m_old = re.match(
+        # Try OLD FORMAT (pre-2026): CGST+SGST format with optional DP column
+        # Row with DP: "1 2000054628 8214 Bronson Professional EA 120 100.00 42.37 20.00 9.00 9.00 - - - 40.00 4,800.00"
+        # Row without DP: "3 4506789843891 3307 Bronson Professional EA 12 200.00 46.61 9.00 9.00 - - - 55.00 660.00"
+        # Strategy: Try matching without DP first, then with DP if that fails
+        
+        # First try: No DP column
+        m_old_no_dp = re.match(
             r'^(\d+)\s+'                        # SR No
             r'(\d{10,13})\s+'                   # EAN (10-13 digits)
             r'(\d{4,8})\s+'                     # HSN (partial - first part)
@@ -119,7 +123,6 @@ def extract_line_items(pdf_path):
             r'(\d+)\s+'                         # Qty
             r'([\d,]+\.?\d*)\s+'               # MRP
             r'([\d,]+\.?\d*)\s+'               # Basic Price
-            r'[\d,]+\.?\d*\s+'                 # Skip DP
             r'([\d.]+)\s+'                      # CGST%
             r'([\d.]+)\s+'                      # SGST%
             r'.*?'                              # Skip other columns
@@ -127,6 +130,27 @@ def extract_line_items(pdf_path):
             r'([\d,]+\.?\d*)$',                # Total Value
             line
         )
+        
+        # Second try: With DP column
+        m_old_with_dp = re.match(
+            r'^(\d+)\s+'                        # SR No
+            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
+            r'(\d{4,8})\s+'                     # HSN (partial - first part)
+            r'(.+?)\s+'                         # Description part 1
+            r'EA\s+'                            # UOM
+            r'(\d+)\s+'                         # Qty
+            r'([\d,]+\.?\d*)\s+'               # MRP
+            r'([\d,]+\.?\d*)\s+'               # Basic Price
+            r'[\d,]+\.?\d*\s+'                 # DP column (skip)
+            r'([\d.]+)\s+'                      # CGST%
+            r'([\d.]+)\s+'                      # SGST%
+            r'.*?'                              # Skip other columns
+            r'([\d,]+\.?\d*)\s+'               # Landed Price
+            r'([\d,]+\.?\d*)$',                # Total Value
+            line
+        )
+        
+        m_old = m_old_no_dp or m_old_with_dp
 
         matched = False
         
@@ -180,7 +204,7 @@ def extract_line_items(pdf_path):
 
             items.append({
                 "Sr #": int(sr_no),
-                "EAN": ean,
+                "EAN": f"'{ean}",  # Prefix with apostrophe to force text format in Excel
                 "Product Name": product_name,
                 "HSN Code": hsn,
                 "Quantity": int(qty),
