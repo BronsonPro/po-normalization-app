@@ -88,24 +88,21 @@ def extract_line_items(pdf_path):
         line = all_lines[i].strip()
 
         # Try NEW FORMAT first (2026): Match product line 1 with IGST column
-        # "1 2000054628 8214 Bronson Professional EA 120 100.00 33.90 - - - 18.00 - 40.00 4,800.00"
+        # Actual format: "1 2000054628 8214 BronsonProfessional EA 120 100.00 33.90 - - - 18.00 - 40.00 4,800.00"
         m_new = re.match(
             r'^(\d+)\s+'                        # SR No
             r'(\d{10,13})\s+'                   # EAN (10-13 digits)
             r'(\d{4})\s+'                       # HSN part 1 (4 digits)
-            r'(.+?)\s+'                         # Description part 1
-            r'(EA|1\.00)\s+'                    # UOM
+            r'(\S+)\s+'                         # Description (no spaces - concatenated)
+            r'EA\s+'                            # UOM
             r'(\d+)\s+'                         # Qty
             r'([\d,]+\.?\d*)\s+'               # MRP
             r'([\d,]+\.?\d*)\s+'               # Basic Price
-            r'[-\d.]+\s+'                       # Skip DP
-            r'[-\d.]+\s+'                       # Skip DV
-            r'[-\d.]+\s+'                       # Skip TT
-            r'[-\d.]+\s+'                       # Skip CGST%
-            r'[-\d.]+\s+'                       # Skip SGST%
-            r'[-\d.]+\s+'                       # Skip CESS%
+            r'[-\s]+'                           # Skip dashes
+            r'[-\s]+'                           # Skip dashes
+            r'[-\s]+'                           # Skip dashes
             r'([\d.]+)\s+'                      # IGST%
-            r'[-\d.]+\s+'                       # Skip UGST%
+            r'[-\s]+'                           # Skip dash
             r'([\d,]+\.?\d*)\s+'               # Landed Price
             r'([\d,]+\.?\d*)$',                # Total Value
             line
