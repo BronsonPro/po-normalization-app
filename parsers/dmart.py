@@ -103,14 +103,15 @@ def extract_line_items(pdf_path):
             line
         )
 
-        # OLD FORMAT (CGST+SGST): Try two variants - with and without DP column
-        # With DP: "1 2000054628 8214 Bronson Professional EA 120 100.00 42.37 20.00 9.00 9.00 - - - 40.00 4,800.00"
-        # Without DP: "3 4506789843891 3307 Bronson Professional EA 12 200.00 46.61 9.00 9.00 - - - 55.00 660.00"
+        # OLD FORMAT (CGST+SGST): Handle rows with AND without DP column more carefully
+        # The challenge: Some rows have DP, some don't, and we need to identify CGST/SGST correctly
+        # CGST and SGST are always single-digit decimals like 9.00, 12.00, 18.00
+        # DP can be larger values like 20.00, 25.00, etc.
         
         m_old = None
         
-        # Try WITHOUT DP column first
-        m_old = re.match(
+        # Strategy: Match the pattern more flexibly and check which numbers are GST rates
+        m_old_flexible = re.match(
             r'^(\d+)\s+'                        # 1: SR No
             r'(\d{10,13})\s+'                   # 2: EAN
             r'(\d{4,8})\s+'                     # 3: HSN part 1
@@ -119,33 +120,36 @@ def extract_line_items(pdf_path):
             r'(\d+)\s+'                         # 5: Qty
             r'([\d,]+\.?\d*)\s+'               # 6: MRP
             r'([\d,]+\.?\d*)\s+'               # 7: Basic Price
-            r'([\d.]+)\s+'                      # 8: CGST%
-            r'([\d.]+)\s+'                      # 9: SGST%
+            r'([\d,]+\.?\d*)\s+'               # 8: Next number (could be DP or CGST)
+            r'([\d.]+)\s+'                      # 9: Next number (could be CGST or SGST)
+            r'([\d.]+)\s+'                      # 10: Next number (could be SGST or something else)
             r'.*?'                              # Skip other columns
-            r'([\d,]+\.?\d*)\s+'               # 10: Landed Price
-            r'([\d,]+\.?\d*)$',                # 11: Total Value
+            r'([\d,]+\.?\d*)\s+'               # 11: Landed Price
+            r'([\d,]+\.?\d*)$',                # 12: Total Value
             line
         )
         
-        # If no match, try WITH DP column
-        if not m_old:
-            m_old = re.match(
-                r'^(\d+)\s+'                        # 1: SR No
-                r'(\d{10,13})\s+'                   # 2: EAN
-                r'(\d{4,8})\s+'                     # 3: HSN part 1
-                r'(.+?)\s+'                         # 4: Description part 1
-                r'EA\s+'                            # UOM
-                r'(\d+)\s+'                         # 5: Qty
-                r'([\d,]+\.?\d*)\s+'               # 6: MRP
-                r'([\d,]+\.?\d*)\s+'               # 7: Basic Price
-                r'[\d,]+\.?\d*\s+'                 # Skip DP column
-                r'([\d.]+)\s+'                      # 8: CGST%
-                r'([\d.]+)\s+'                      # 9: SGST%
-                r'.*?'                              # Skip other columns
-                r'([\d,]+\.?\d*)\s+'               # 10: Landed Price
-                r'([\d,]+\.?\d*)$',                # 11: Total Value
-                line
-            )
+        if m_old_flexible:
+            # Determine if there's a DP column by checking the values
+            val1 = float(m_old_flexible.group(8).replace(",", ""))  # Could be DP or CGST
+            val2 = float(m_old_flexible.group(9))                    # Could be CGST or SGST
+            val3 = float(m_old_flexible.group(10))                   # Could be SGST or other
+            
+            # CGST and SGST are typically 9.00, 12.00, 14.00, 18.00 (single/low double digits)
+            # DP is typically 20.00, 25.00, 30.00 or higher
+            # If val1 is > 18, it's likely DP, so CGST=val2, SGST=val3
+            # If val1 is <= 18, it's likely CGST, so CGST=val1, SGST=val2
+            
+            if val1 > 18.0:
+                # Has DP column: val1=DP, val2=CGST, val3=SGST
+                cgst_val = val2
+                sgst_val = val3
+            else:
+                # No DP column: val1=CGST, val2=SGST
+                cgst_val = val1
+                sgst_val = val2
+            
+            m_old = m_old_flexible
 
         matched = False
         
@@ -173,10 +177,11 @@ def extract_line_items(pdf_path):
             qty = m_old.group(5)
             mrp = m_old.group(6).replace(",", "")
             basic = m_old.group(7).replace(",", "")
-            cgst = float(m_old.group(8))
-            sgst = float(m_old.group(9))
-            landed = m_old.group(10).replace(",", "")
-            total = m_old.group(11).replace(",", "")
+            # Use the detected cgst_val and sgst_val from the smart detection above
+            cgst = cgst_val
+            sgst = sgst_val
+            landed = m_old.group(11).replace(",", "")
+            total = m_old.group(12).replace(",", "")
             gst_pct = cgst + sgst
             matched = True
 
