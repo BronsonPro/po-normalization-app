@@ -255,47 +255,21 @@ def convert_pdf_to_excel(pdf_path, output_excel_path):
         "Grand Total": f"{grand_total:.2f}",
     }
 
-    from openpyxl import Workbook
+    with pd.ExcelWriter(output_excel_path, engine="openpyxl") as writer:
+        row_offset = 0
 
-    wb = Workbook()
-    ws = wb.active
+        header_df = pd.DataFrame({
+            "Field": list(header_data.keys()),
+            "Value": list(header_data.values()),
+        })
+        header_df.to_excel(writer, index=False, startrow=row_offset, header=False)
+        row_offset += len(header_df) + 2
 
-    row_offset = 1
+        products.to_excel(writer, index=False, startrow=row_offset)
+        row_offset += len(products) + 2
 
-    # Write header data
-    for field, value in header_data.items():
-        ws.cell(row=row_offset, column=1, value=field)
-        ws.cell(row=row_offset, column=2, value=value)
-        row_offset += 1
-
-    row_offset += 2
-
-    # Write product headers
-    headers = ["Sr #", "EAN", "Product Name", "HSN Code", "Quantity", "MRP", "Base Rate", "GST %", "Total"]
-    for col, header in enumerate(headers, 1):
-        ws.cell(row=row_offset, column=col, value=header)
-
-    row_offset += 1
-
-    # Write product data
-    for _, row in products.iterrows():
-        ws.cell(row=row_offset, column=1, value=row["Sr #"])
-        ws.cell(row=row_offset, column=2, value=row["EAN"])
-        ws.cell(row=row_offset, column=3, value=row["Product Name"])
-        ws.cell(row=row_offset, column=4, value=row["HSN Code"])
-        ws.cell(row=row_offset, column=5, value=row["Quantity"])
-        ws.cell(row=row_offset, column=6, value=row["MRP"])
-        ws.cell(row=row_offset, column=7, value=row["Base Rate"])
-        ws.cell(row=row_offset, column=8, value=row["GST %"])
-        ws.cell(row=row_offset, column=9, value=row["Total"])
-        row_offset += 1
-
-    row_offset += 2
-
-    # Write summary data
-    for field, value in summary_data.items():
-        ws.cell(row=row_offset, column=1, value=field)
-        ws.cell(row=row_offset, column=2, value=value)
-        row_offset += 1
-
-    wb.save(output_excel_path)
+        summary_df = pd.DataFrame({
+            "Field": list(summary_data.keys()),
+            "Value": list(summary_data.values()),
+        })
+        summary_df.to_excel(writer, index=False, startrow=row_offset, header=False)
