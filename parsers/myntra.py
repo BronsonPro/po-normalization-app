@@ -308,7 +308,7 @@ def extract_line_items_from_text(pdf_path):
                     base_rate1 = float(parts[-5])
                     mrp = float(parts[-6])
                     qty = int(float(parts[-7]))
-                    debug_info.append(f"Qty={qty}, MRP={mrp}, Rate={base_rate2}, GST%={gst_pct}, Total={total}")
+                    debug_info.append(f"Qty={qty}, MRP={mrp}, Rate={base_rate1}, GST%={gst_pct}, Total={total}")
                 else:
                     # CGST+SGST format: ...Qty MRP Rate1 Rate2 CGST% CGST_Amt SGST% SGST_Amt Total
                     debug_info.append("Using CGST+SGST format")
@@ -321,7 +321,7 @@ def extract_line_items_from_text(pdf_path):
                     mrp = float(parts[-8])
                     qty = int(float(parts[-9]))
                     gst_pct = cgst_pct + sgst_pct
-                    debug_info.append(f"Qty={qty}, MRP={mrp}, Rate={base_rate2}, GST%={gst_pct}, Total={total}")
+                    debug_info.append(f"Qty={qty}, MRP={mrp}, Rate={base_rate1}, GST%={gst_pct}, Total={total}")
                 
                 if qty <= 0 or mrp <= 0 or total <= 0:
                     continue
@@ -333,7 +333,7 @@ def extract_line_items_from_text(pdf_path):
                     "HSN Code": hsn,
                     "Quantity": qty,
                     "MRP": mrp,
-                    "Base Rate": base_rate2,
+                    "Base Rate": base_rate1,
                     "GST %": gst_pct,
                     "Total": total,
                 })
