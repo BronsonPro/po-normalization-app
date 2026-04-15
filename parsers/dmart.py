@@ -19,12 +19,12 @@ def extract_po_header(pdf_path):
 
     for line in text.split("\n"):
 
-        # PO Number in title line
+        # PO Number in title line: "AvenueE-CommerceLtd PurchaseOrder 4501879572"
         m = re.search(r'PurchaseOrder\s+(\d+)', line)
         if m:
             po_no = m.group(1).strip()
 
-        # PO Date and Validity
+        # PO Date and Validity: "PurchaseOrderDate:27.12.2025 POValidity:27.12.2025to27.01.2026"
         m = re.search(r'PurchaseOrderDate:([\d.]+)', line)
         if m:
             po_date = m.group(1).strip()
@@ -52,9 +52,12 @@ def extract_po_header(pdf_path):
     
     # Find all 6-digit pincodes
     all_pins = re.findall(r'\b(\d{6})\b', ship_section)
+    # The shipping pincode typically appears twice (Bill To and Ship To columns)
+    # Count occurrences and take the one that appears most (excluding vendor code 103006)
     from collections import Counter
     pin_counts = Counter([pin for pin in all_pins if not pin.startswith('103')])
     if pin_counts:
+        # Take the most common pincode
         shipping_address = pin_counts.most_common(1)[0][0]
 
     return {
@@ -84,121 +87,100 @@ def extract_line_items(pdf_path):
     while i < len(all_lines):
         line = all_lines[i].strip()
 
-        # NEW FORMAT (2026 IGST): "1 2000054628 8214 BronsonProfessional EA 120 100.00 33.90 - - - 18.00 - 40.00 4,800.00"
-        # Pattern: SR EAN HSN Desc EA Qty MRP Basic - - - IGST% - Landed Total
+        # Try NEW FORMAT first (2026): Match product line 1 with IGST column
+        # Actual format: "1 2000054628 8214 BronsonProfessional EA 120 100.00 33.90 - - - 18.00 - 40.00 4,800.00"
         m_new = re.match(
-            r'^(\d+)\s+'                        # 1: SR No
-            r'(\d{10,13})\s+'                   # 2: EAN (10-13 digits)
-            r'(\d{4})\s+'                       # 3: HSN part 1
-            r'(\S+)\s+'                         # 4: Description (concatenated, no spaces)
+            r'^(\d+)\s+'                        # SR No
+            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
+            r'(\d{4})\s+'                       # HSN part 1 (4 digits)
+            r'(\S+)\s+'                         # Description (no spaces - concatenated)
             r'EA\s+'                            # UOM
-            r'(\d+)\s+'                         # 5: Qty
-            r'([\d,]+\.?\d*)\s+'               # 6: MRP
-            r'([\d,]+\.?\d*)\s+'               # 7: Basic Price
-            r'-\s+-\s+-\s+'                     # Skip 3 dashes
-            r'([\d.]+)\s+'                      # 8: IGST%
-            r'-\s+'                             # Skip 1 dash
-            r'([\d,]+\.?\d*)\s+'               # 9: Landed Price
-            r'([\d,]+\.?\d*)$',                # 10: Total Value
+            r'(\d+)\s+'                         # Qty
+            r'([\d,]+\.?\d*)\s+'               # MRP
+            r'([\d,]+\.?\d*)\s+'               # Basic Price
+            r'-\s+-\s+-\s+'                     # Skip 3 dashes (DP DV TT or similar)
+            r'([\d.]+)\s+'                      # IGST%
+            r'-\s+'                             # Skip dash (UGST%)
+            r'([\d,]+\.?\d*)\s+'               # Landed Price
+            r'([\d,]+\.?\d*)$',                # Total Value
             line
         )
 
-        # OLD FORMAT (CGST+SGST): Handle rows with varying columns
-        # Some rows have all columns, some are missing certain values
-        # Pattern: SR EAN HSN Desc EA Qty MRP Basic [DP?] CGST% SGST% ... Landed Total
+        # Try OLD FORMAT (pre-2026): CGST+SGST format with optional DP column
+        # Row with DP: "1 2000054628 8214 Bronson Professional EA 120 100.00 42.37 20.00 9.00 9.00 - - - 40.00 4,800.00"
+        # Row without DP: "3 4506789843891 3307 Bronson Professional EA 12 200.00 46.61 9.00 9.00 - - - 55.00 660.00"
+        # Strategy: Try matching without DP first, then with DP if that fails
         
-        m_old = None
-        cgst_val = 0.0
-        sgst_val = 0.0
-        
-        # More flexible pattern - capture all numeric values after Basic Price
-        m_old_flexible = re.match(
-            r'^(\d+)\s+'                        # 1: SR No
-            r'(\d{10,13})\s+'                   # 2: EAN
-            r'(\d{4,8})\s+'                     # 3: HSN part 1
-            r'(.+?)\s+'                         # 4: Description part 1
+        # First try: No DP column
+        m_old_no_dp = re.match(
+            r'^(\d+)\s+'                        # SR No
+            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
+            r'(\d{4,8})\s+'                     # HSN (partial - first part)
+            r'(.+?)\s+'                         # Description part 1
             r'EA\s+'                            # UOM
-            r'(\d+)\s+'                         # 5: Qty
-            r'([\d,]+\.?\d*)\s+'               # 6: MRP
-            r'([\d,]+\.?\d*)\s+'               # 7: Basic Price
-            r'(.+?)\s+'                         # 8: Everything between Basic and Landed (flexible)
-            r'([\d,]+\.?\d*)\s+'               # 9: Landed Price (second-to-last number)
-            r'([\d,]+\.?\d*)$',                # 10: Total Value (last number)
+            r'(\d+)\s+'                         # Qty
+            r'([\d,]+\.?\d*)\s+'               # MRP
+            r'([\d,]+\.?\d*)\s+'               # Basic Price
+            r'([\d.]+)\s+'                      # CGST%
+            r'([\d.]+)\s+'                      # SGST%
+            r'.*?'                              # Skip other columns
+            r'([\d,]+\.?\d*)\s+'               # Landed Price
+            r'([\d,]+\.?\d*)$',                # Total Value
             line
         )
         
-        if m_old_flexible:
-            # Extract the middle section and find CGST/SGST
-            middle_section = m_old_flexible.group(8).strip()
-            # Find all decimal numbers in the middle section
-            numbers = re.findall(r'[\d.]+', middle_section)
-            
-            # Convert to floats, filtering out obvious non-GST values (dashes become empty)
-            numeric_values = []
-            for num in numbers:
-                try:
-                    val = float(num)
-                    if val > 0:  # Skip zeros and negatives
-                        numeric_values.append(val)
-                except:
-                    pass
-            
-            # Logic to find CGST and SGST:
-            # - They are typically equal (e.g., 9.00 and 9.00 for 18% total)
-            # - They are small values (9, 12, 14, 18 range)
-            # - They appear as consecutive values
-            
-            found_gst = False
-            for i in range(len(numeric_values) - 1):
-                val1 = numeric_values[i]
-                val2 = numeric_values[i + 1]
-                
-                # Check if both values look like GST rates (typically <= 18)
-                # and are equal or close (CGST = SGST in most cases)
-                if val1 <= 18.0 and val2 <= 18.0 and abs(val1 - val2) < 1.0:
-                    cgst_val = val1
-                    sgst_val = val2
-                    found_gst = True
-                    break
-            
-            if found_gst:
-                m_old = m_old_flexible
-            else:
-                # Fallback: if we can't find matching CGST/SGST, skip this row
-                m_old = None
+        # Second try: With DP column
+        m_old_with_dp = re.match(
+            r'^(\d+)\s+'                        # SR No
+            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
+            r'(\d{4,8})\s+'                     # HSN (partial - first part)
+            r'(.+?)\s+'                         # Description part 1
+            r'EA\s+'                            # UOM
+            r'(\d+)\s+'                         # Qty
+            r'([\d,]+\.?\d*)\s+'               # MRP
+            r'([\d,]+\.?\d*)\s+'               # Basic Price
+            r'[\d,]+\.?\d*\s+'                 # DP column (skip)
+            r'([\d.]+)\s+'                      # CGST%
+            r'([\d.]+)\s+'                      # SGST%
+            r'.*?'                              # Skip other columns
+            r'([\d,]+\.?\d*)\s+'               # Landed Price
+            r'([\d,]+\.?\d*)$',                # Total Value
+            line
+        )
+        
+        m_old = m_old_no_dp or m_old_with_dp
 
         matched = False
         
         if m_new:
-            # NEW FORMAT (IGST)
-            sr_no = m_new.group(1)
-            ean = m_new.group(2)
-            hsn_part1 = m_new.group(3)
-            desc_part1 = m_new.group(4).strip()
-            qty = m_new.group(5)
-            mrp = m_new.group(6).replace(",", "")
-            basic = m_new.group(7).replace(",", "")
-            igst = float(m_new.group(8))
-            landed = m_new.group(9).replace(",", "")
-            total = m_new.group(10).replace(",", "")
+            # NEW FORMAT
+            sr_no = m_new.group(1)      # SR No
+            ean = m_new.group(2)        # EAN
+            hsn_part1 = m_new.group(3)  # HSN part 1
+            desc_part1 = m_new.group(4).strip()  # Description
+            qty = m_new.group(5)        # Qty
+            mrp = m_new.group(6).replace(",", "")    # MRP
+            basic = m_new.group(7).replace(",", "")  # Basic Price
+            igst = float(m_new.group(8)) if m_new.group(8) != '-' else 0.0  # IGST%
+            landed = m_new.group(9).replace(",", "")   # Landed Price
+            total = m_new.group(10).replace(",", "")   # Total Value
             gst_pct = igst
             matched = True
             
         elif m_old:
-            # OLD FORMAT (CGST+SGST)
-            sr_no = m_old.group(1)
-            ean = m_old.group(2)
-            hsn_part1 = m_old.group(3)
-            desc_part1 = m_old.group(4).strip()
-            qty = m_old.group(5)
-            mrp = m_old.group(6).replace(",", "")
-            basic = m_old.group(7).replace(",", "")
-            # Use the detected cgst_val and sgst_val from the smart detection above
-            cgst = cgst_val
-            sgst = sgst_val
-            landed = m_old.group(9).replace(",", "")
-            total = m_old.group(10).replace(",", "")
-            gst_pct = cgst + sgst
+            # OLD FORMAT
+            sr_no = m_old.group(1)      # SR No
+            ean = m_old.group(2)        # EAN
+            hsn_part1 = m_old.group(3)  # HSN part 1
+            desc_part1 = m_old.group(4).strip()  # Description
+            qty = m_old.group(5)        # Qty
+            mrp = m_old.group(6).replace(",", "")    # MRP
+            basic = m_old.group(7).replace(",", "")  # Basic Price
+            cgst = float(m_old.group(8))   # CGST%
+            sgst = float(m_old.group(9))   # SGST%
+            landed = m_old.group(10).replace(",", "")  # Landed Price
+            total = m_old.group(11).replace(",", "")   # Total Value
+            gst_pct = cgst + sgst  # Don't round - keep exact sum
             matched = True
 
         if matched:
@@ -273,21 +255,47 @@ def convert_pdf_to_excel(pdf_path, output_excel_path):
         "Grand Total": f"{grand_total:.2f}",
     }
 
-    with pd.ExcelWriter(output_excel_path, engine="openpyxl") as writer:
-        row_offset = 0
+    from openpyxl import Workbook
 
-        header_df = pd.DataFrame({
-            "Field": list(header_data.keys()),
-            "Value": list(header_data.values()),
-        })
-        header_df.to_excel(writer, index=False, startrow=row_offset, header=False)
-        row_offset += len(header_df) + 2
+    wb = Workbook()
+    ws = wb.active
 
-        products.to_excel(writer, index=False, startrow=row_offset)
-        row_offset += len(products) + 2
+    row_offset = 1
 
-        summary_df = pd.DataFrame({
-            "Field": list(summary_data.keys()),
-            "Value": list(summary_data.values()),
-        })
-        summary_df.to_excel(writer, index=False, startrow=row_offset, header=False)
+    # Write header data
+    for field, value in header_data.items():
+        ws.cell(row=row_offset, column=1, value=field)
+        ws.cell(row=row_offset, column=2, value=value)
+        row_offset += 1
+
+    row_offset += 2
+
+    # Write product headers
+    headers = ["Sr #", "EAN", "Product Name", "HSN Code", "Quantity", "MRP", "Base Rate", "GST %", "Total"]
+    for col, header in enumerate(headers, 1):
+        ws.cell(row=row_offset, column=col, value=header)
+
+    row_offset += 1
+
+    # Write product data
+    for _, row in products.iterrows():
+        ws.cell(row=row_offset, column=1, value=row["Sr #"])
+        ws.cell(row=row_offset, column=2, value=row["EAN"])
+        ws.cell(row=row_offset, column=3, value=row["Product Name"])
+        ws.cell(row=row_offset, column=4, value=row["HSN Code"])
+        ws.cell(row=row_offset, column=5, value=row["Quantity"])
+        ws.cell(row=row_offset, column=6, value=row["MRP"])
+        ws.cell(row=row_offset, column=7, value=row["Base Rate"])
+        ws.cell(row=row_offset, column=8, value=row["GST %"])
+        ws.cell(row=row_offset, column=9, value=row["Total"])
+        row_offset += 1
+
+    row_offset += 2
+
+    # Write summary data
+    for field, value in summary_data.items():
+        ws.cell(row=row_offset, column=1, value=field)
+        ws.cell(row=row_offset, column=2, value=value)
+        row_offset += 1
+
+    wb.save(output_excel_path)
