@@ -19,12 +19,10 @@ def extract_po_header(pdf_path):
 
     for line in text.split("\n"):
 
-        # PO Number in title line: "AvenueE-CommerceLtd PurchaseOrder 4501879572"
         m = re.search(r'PurchaseOrder\s+(\d+)', line)
         if m:
             po_no = m.group(1).strip()
 
-        # PO Date and Validity: "PurchaseOrderDate:27.12.2025 POValidity:27.12.2025to27.01.2026"
         m = re.search(r'PurchaseOrderDate:([\d.]+)', line)
         if m:
             po_date = m.group(1).strip()
@@ -33,12 +31,10 @@ def extract_po_header(pdf_path):
         if m:
             po_expiry = m.group(1).strip()
 
-        # GST - Ship To GST (buyer GST)
         m = re.search(r'GST#([A-Z0-9]{15})', line)
         if m and not gst_no:
             gst_no = m.group(1).strip()
 
-    # Shipping address - collect all lines from ShipTo to PurchaseOrderDate
     lines = text.split("\n")
     ship_section = ""
     in_ship = False
@@ -50,14 +46,10 @@ def extract_po_header(pdf_path):
         if "PurchaseOrderDate" in line and in_ship:
             break
     
-    # Find all 6-digit pincodes
     all_pins = re.findall(r'\b(\d{6})\b', ship_section)
-    # The shipping pincode typically appears twice (Bill To and Ship To columns)
-    # Count occurrences and take the one that appears most (excluding vendor code 103006)
     from collections import Counter
     pin_counts = Counter([pin for pin in all_pins if not pin.startswith('103')])
     if pin_counts:
-        # Take the most common pincode
         shipping_address = pin_counts.most_common(1)[0][0]
 
     return {
@@ -74,145 +66,148 @@ def extract_po_header(pdf_path):
 
 def extract_line_items(pdf_path):
 
-    all_lines = []
-
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text() or ""
-            all_lines.extend(text.split("\n"))
-
     items = []
 
-    i = 0
-    while i < len(all_lines):
-        line = all_lines[i].strip()
-
-        # Try NEW FORMAT first (2026): Match product line 1 with IGST column
-        # Actual format: "1 2000054628 8214 BronsonProfessional EA 120 100.00 33.90 - - - 18.00 - 40.00 4,800.00"
-        m_new = re.match(
-            r'^(\d+)\s+'                        # SR No
-            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
-            r'(\d{4})\s+'                       # HSN part 1 (4 digits)
-            r'(\S+)\s+'                         # Description (no spaces - concatenated)
-            r'EA\s+'                            # UOM
-            r'(\d+)\s+'                         # Qty
-            r'([\d,]+\.?\d*)\s+'               # MRP
-            r'([\d,]+\.?\d*)\s+'               # Basic Price
-            r'-\s+-\s+-\s+'                     # Skip 3 dashes (DP DV TT or similar)
-            r'([\d.]+)\s+'                      # IGST%
-            r'-\s+'                             # Skip dash (UGST%)
-            r'([\d,]+\.?\d*)\s+'               # Landed Price
-            r'([\d,]+\.?\d*)$',                # Total Value
-            line
-        )
-
-        # Try OLD FORMAT (pre-2026): CGST+SGST format with optional DP column
-        # Row with DP: "1 2000054628 8214 Bronson Professional EA 120 100.00 42.37 20.00 9.00 9.00 - - - 40.00 4,800.00"
-        # Row without DP: "3 4506789843891 3307 Bronson Professional EA 12 200.00 46.61 9.00 9.00 - - - 55.00 660.00"
-        # Strategy: Try matching without DP first, then with DP if that fails
-        
-        # First try: No DP column
-        m_old_no_dp = re.match(
-            r'^(\d+)\s+'                        # SR No
-            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
-            r'(\d{4,8})\s+'                     # HSN (partial - first part)
-            r'(.+?)\s+'                         # Description part 1
-            r'EA\s+'                            # UOM
-            r'(\d+)\s+'                         # Qty
-            r'([\d,]+\.?\d*)\s+'               # MRP
-            r'([\d,]+\.?\d*)\s+'               # Basic Price
-            r'([\d.]+)\s+'                      # CGST%
-            r'([\d.]+)\s+'                      # SGST%
-            r'.*?'                              # Skip other columns
-            r'([\d,]+\.?\d*)\s+'               # Landed Price
-            r'([\d,]+\.?\d*)$',                # Total Value
-            line
-        )
-        
-        # Second try: With DP column
-        m_old_with_dp = re.match(
-            r'^(\d+)\s+'                        # SR No
-            r'(\d{10,13})\s+'                   # EAN (10-13 digits)
-            r'(\d{4,8})\s+'                     # HSN (partial - first part)
-            r'(.+?)\s+'                         # Description part 1
-            r'EA\s+'                            # UOM
-            r'(\d+)\s+'                         # Qty
-            r'([\d,]+\.?\d*)\s+'               # MRP
-            r'([\d,]+\.?\d*)\s+'               # Basic Price
-            r'[\d,]+\.?\d*\s+'                 # DP column (skip)
-            r'([\d.]+)\s+'                      # CGST%
-            r'([\d.]+)\s+'                      # SGST%
-            r'.*?'                              # Skip other columns
-            r'([\d,]+\.?\d*)\s+'               # Landed Price
-            r'([\d,]+\.?\d*)$',                # Total Value
-            line
-        )
-        
-        m_old = m_old_no_dp or m_old_with_dp
-
-        matched = False
-        
-        if m_new:
-            # NEW FORMAT
-            sr_no = m_new.group(1)      # SR No
-            ean = m_new.group(2)        # EAN
-            hsn_part1 = m_new.group(3)  # HSN part 1
-            desc_part1 = m_new.group(4).strip()  # Description
-            qty = m_new.group(5)        # Qty
-            mrp = m_new.group(6).replace(",", "")    # MRP
-            basic = m_new.group(7).replace(",", "")  # Basic Price
-            igst = float(m_new.group(8)) if m_new.group(8) != '-' else 0.0  # IGST%
-            landed = m_new.group(9).replace(",", "")   # Landed Price
-            total = m_new.group(10).replace(",", "")   # Total Value
-            gst_pct = igst
-            matched = True
+    with pdfplumber.open(pdf_path) as pdf:
+        for page_num, page in enumerate(pdf.pages):
             
-        elif m_old:
-            # OLD FORMAT
-            sr_no = m_old.group(1)      # SR No
-            ean = m_old.group(2)        # EAN
-            hsn_part1 = m_old.group(3)  # HSN part 1
-            desc_part1 = m_old.group(4).strip()  # Description
-            qty = m_old.group(5)        # Qty
-            mrp = m_old.group(6).replace(",", "")    # MRP
-            basic = m_old.group(7).replace(",", "")  # Basic Price
-            cgst = float(m_old.group(8))   # CGST%
-            sgst = float(m_old.group(9))   # SGST%
-            landed = m_old.group(10).replace(",", "")  # Landed Price
-            total = m_old.group(11).replace(",", "")   # Total Value
-            gst_pct = cgst + sgst  # Don't round - keep exact sum
-            matched = True
-
-        if matched:
-            # Line 2 has: article_no + hsn_part2 + desc_part2 + 1.00 + ...
-            desc_part2 = ""
-            hsn_part2 = ""
-            if i + 1 < len(all_lines):
-                next_line = all_lines[i + 1].strip()
-                m2 = re.match(r'^(\d+)\s+(\d+)\s+(.+?)\s+1\.00', next_line)
-                if m2:
-                    hsn_part2 = m2.group(2)
-                    desc_part2 = m2.group(3).strip()
-
-            # Full HSN code
-            hsn = hsn_part1 + hsn_part2
-
-            # Full description
-            product_name = (desc_part1 + " " + desc_part2).strip()
-
-            items.append({
-                "Sr #": int(sr_no),
-                "EAN": ean,
-                "Product Name": product_name,
-                "HSN Code": hsn,
-                "Quantity": int(qty),
-                "MRP": float(mrp),
-                "Base Rate": float(basic),
-                "GST %": gst_pct,
-                "Total": float(total),
-            })
-
-        i += 1
+            # Extract table
+            tables = page.extract_tables()
+            
+            if not tables:
+                continue
+            
+            table = tables[0]
+            
+            # Find header row (contains "Sr" and "EAN/Article")
+            header_row_idx = None
+            for idx, row in enumerate(table):
+                if row and any(cell and "Sr" in str(cell) and "No" in str(cell) for cell in row[:2]):
+                    header_row_idx = idx
+                    break
+            
+            if header_row_idx is None:
+                continue
+            
+            headers = table[header_row_idx]
+            
+            # Find column indices
+            col_sr = None
+            col_ean = None
+            col_hsn = None
+            col_desc = None
+            col_qty = None
+            col_mrp = None
+            col_basic = None
+            col_cgst = None
+            col_sgst = None
+            col_igst = None
+            col_landed = None
+            col_total = None
+            
+            for idx, h in enumerate(headers):
+                if not h:
+                    continue
+                h_lower = str(h).lower().replace("\n", "").replace(" ", "")
+                
+                if "sr" in h_lower and "no" in h_lower:
+                    col_sr = idx
+                elif "ean" in h_lower or "article" in h_lower:
+                    col_ean = idx
+                elif "hsn" in h_lower and "code" in h_lower:
+                    col_hsn = idx
+                elif "description" in h_lower:
+                    col_desc = idx
+                elif "poqty" in h_lower or ("qty" in h_lower and "po" in h_lower):
+                    col_qty = idx
+                elif "mrp" in h_lower:
+                    col_mrp = idx
+                elif "basic" in h_lower and "price" in h_lower:
+                    col_basic = idx
+                elif "cgst%" in h_lower or h_lower == "cgst%":
+                    col_cgst = idx
+                elif "sgst%" in h_lower or "sgst%cess%" in h_lower:
+                    col_sgst = idx
+                elif "igst%" in h_lower or "igst%ugst%" in h_lower:
+                    col_igst = idx
+                elif "landed" in h_lower:
+                    col_landed = idx
+                elif "total" in h_lower and "value" in h_lower:
+                    col_total = idx
+            
+            # Process data rows
+            for row_idx in range(header_row_idx + 1, len(table)):
+                row = table[row_idx]
+                
+                if not row or not row[col_sr]:
+                    continue
+                
+                sr_text = str(row[col_sr]).strip()
+                
+                # Check if this is a data row (starts with number)
+                if not sr_text or not sr_text[0].isdigit():
+                    continue
+                
+                # Extract SR number
+                sr_match = re.match(r'(\d+)', sr_text)
+                if not sr_match:
+                    continue
+                
+                sr_no = sr_match.group(1)
+                
+                # Extract values
+                ean = str(row[col_ean] or "").strip().split()[0] if col_ean is not None else ""
+                hsn = str(row[col_hsn] or "").strip().replace("\n", "") if col_hsn is not None else ""
+                desc = str(row[col_desc] or "").strip().replace("\n", " ") if col_desc is not None else ""
+                qty = str(row[col_qty] or "").strip() if col_qty is not None else "0"
+                mrp = str(row[col_mrp] or "0").strip().replace(",", "") if col_mrp is not None else "0"
+                basic = str(row[col_basic] or "0").strip().replace(",", "") if col_basic is not None else "0"
+                landed = str(row[col_landed] or "0").strip().replace(",", "") if col_landed is not None else "0"
+                total = str(row[col_total] or "0").strip().replace(",", "") if col_total is not None else "0"
+                
+                # Extract GST % - check which format
+                cgst_text = str(row[col_cgst] or "").strip() if col_cgst is not None else "-"
+                sgst_text = str(row[col_sgst] or "").strip().split()[0] if col_sgst is not None else "-"  # Split to get just SGST, not CESS
+                igst_text = str(row[col_igst] or "").strip().split()[0] if col_igst is not None else "-"  # Split to get just IGST, not UGST
+                
+                # Determine GST %
+                gst_pct = 0.0
+                
+                # Check if IGST format (IGST has value, CGST/SGST are dashes)
+                if igst_text != "-" and igst_text:
+                    try:
+                        gst_pct = float(igst_text)
+                    except:
+                        gst_pct = 0.0
+                # Check if CGST+SGST format
+                elif cgst_text != "-" and sgst_text != "-":
+                    try:
+                        cgst_val = float(cgst_text)
+                        sgst_val = float(sgst_text)
+                        gst_pct = cgst_val + sgst_val
+                    except:
+                        gst_pct = 0.0
+                
+                # Clean up values
+                try:
+                    qty_int = int(qty)
+                    mrp_float = float(mrp) if mrp else 0.0
+                    basic_float = float(basic) if basic else 0.0
+                    total_float = float(total) if total else 0.0
+                except:
+                    continue
+                
+                items.append({
+                    "Sr #": int(sr_no),
+                    "EAN": ean,
+                    "Product Name": desc,
+                    "HSN Code": hsn,
+                    "Quantity": qty_int,
+                    "MRP": mrp_float,
+                    "Base Rate": basic_float,
+                    "GST %": gst_pct,
+                    "Total": total_float,
+                })
 
     return pd.DataFrame(items)
 
