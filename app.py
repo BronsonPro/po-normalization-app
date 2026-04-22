@@ -989,7 +989,6 @@ if po_df is not None and master_df is not None:
             try:
                 party_name_sheet = ""
                 shipping_pin = ""
-
                 for row in ws.iter_rows(min_row=1, max_row=table_header_row):
                     label = str(row[0].value).strip().lower() if row[0].value else ""
                         
@@ -1005,13 +1004,11 @@ if po_df is not None and master_df is not None:
                             shipping_pin = addr.strip()
                         else:
                             shipping_pin = ""
-
                 if party_name_sheet and shipping_pin:
                     party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
                     party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
                         lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
                     )
-
                     match = party_code_master[
                         (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
                         (party_code_master["_clean_name"] == party_name_clean)
@@ -1022,13 +1019,37 @@ if po_df is not None and master_df is not None:
                             (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
                             (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
                         ]
-
-                    if not match.empty:
+                    
+                    # Handle multiple matches - let user select
+                    if len(match) > 1:
+                        st.warning(f"⚠️ Multiple party codes found for zipcode {shipping_pin}")
+                        
+                        # Create display options with Party Code - Warehouse - State
+                        display_options = []
+                        code_map = {}
+                        for _, row in match.iterrows():
+                            display_text = f"{row['Party Code']} - {row['Warehouse']} ({row['State Name']})"
+                            display_options.append(display_text)
+                            code_map[display_text] = str(row['Party Code'])
+                        
+                        selected_display = st.selectbox(
+                            "Select the correct party code:",
+                            options=display_options,
+                            key=f"party_code_select_{party}"
+                        )
+                        
+                        party_code_value = code_map[selected_display]
+                        
+                    elif len(match) == 1:
                         party_code_value = str(match.iloc[0]["Party Code"])
-
+                        st.info(f"✓ Party Code: {party_code_value} - {match.iloc[0]['Warehouse']}")
+                    else:
+                        st.error(f"❌ No party code found for zipcode {shipping_pin}")
+                        party_code_value = ""
             except Exception as e:
                 party_code_value = ""
-
+                st.error(f"Error finding party code: {str(e)}")
+                
         insert_row = None
         for r in range(1, table_header_row + 2):
             val = ws.cell(row=r, column=1).value
