@@ -987,85 +987,84 @@ if po_df is not None and master_df is not None:
         party_code_value = ""
         if party_code_master is not None:
             try:
-                party_name_sheet = ""
-                shipping_pin = ""
+                # Auto-detect zipcode column name
+                zipcode_col = None
+                for col in party_code_master.columns:
+                    col_lower = col.lower().replace(" ", "")
+                    if col_lower in ["zipcode", "pincode", "zip", "pin"]:
+                        zipcode_col = col
+                        break
                 
-                # Debug: Show what we're looking for
-                st.write("DEBUG: Looking for party code...")
-                
-                for row in ws.iter_rows(min_row=1, max_row=table_header_row):
-                    label = str(row[0].value).strip().lower() if row[0].value else ""
-                        
-                    if label == "party name":
-                        party_name_sheet = str(row[1].value).strip().lower() if row[1].value else ""
-                        
-                    if label == "shipping address":
-                        addr = str(row[1].value) if row[1].value else ""
-                        pin_match = re.findall(r"\d{6}", addr)
-                        if pin_match:
-                            shipping_pin = pin_match[0]
-                        elif addr.strip().isdigit() and len(addr.strip()) == 6:
-                            shipping_pin = addr.strip()
-                        else:
-                            shipping_pin = ""
-                
-                # Debug output
-                st.write(f"DEBUG: Party Name from PO: '{party_name_sheet}'")
-                st.write(f"DEBUG: Shipping Pin from PO: '{shipping_pin}'")
-                st.write(f"DEBUG: PartyCode master columns: {party_code_master.columns.tolist()}")
-                st.write(f"DEBUG: Sample ZipCodes in master: {party_code_master['ZipCode'].head().tolist()}")
-                
-                if party_name_sheet and shipping_pin:
-                    party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
-                    st.write(f"DEBUG: Cleaned party name: '{party_name_clean}'")
+                if zipcode_col is None:
+                    st.error(f"❌ Zipcode column not found in PartyCode.xlsx. Available columns: {party_code_master.columns.tolist()}")
+                    party_code_value = ""
+                else:
+                    party_name_sheet = ""
+                    shipping_pin = ""
                     
-                    party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
-                        lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
-                    )
+                    for row in ws.iter_rows(min_row=1, max_row=table_header_row):
+                        label = str(row[0].value).strip().lower() if row[0].value else ""
+                            
+                        if label == "party name":
+                            party_name_sheet = str(row[1].value).strip().lower() if row[1].value else ""
+                            
+                        if label == "shipping address":
+                            addr = str(row[1].value) if row[1].value else ""
+                            pin_match = re.findall(r"\d{6}", addr)
+                            if pin_match:
+                                shipping_pin = pin_match[0]
+                            elif addr.strip().isdigit() and len(addr.strip()) == 6:
+                                shipping_pin = addr.strip()
+                            else:
+                                shipping_pin = ""
                     
-                    match = party_code_master[
-                        (party_code_master["ZipCode"].astype(str) == str(shipping_pin)) &
-                        (party_code_master["_clean_name"] == party_name_clean)
-                    ]
-                    
-                    st.write(f"DEBUG: First match attempt found {len(match)} matches")
-                        
-                    if match.empty:
-                        match = party_code_master[
-                            (party_code_master["ZipCode"].astype(str) == str(shipping_pin)) &
-                            (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
-                        ]
-                        st.write(f"DEBUG: Second match attempt found {len(match)} matches")
-                    
-                    # Handle multiple matches - let user select
-                    if len(match) > 1:
-                        st.warning(f"⚠️ Multiple party codes found for zipcode {shipping_pin}")
-                        
-                        # Create display options with Party Code - Warehouse - State
-                        display_options = []
-                        code_map = {}
-                        for _, row in match.iterrows():
-                            display_text = f"{row['Party Code']} - {row['Warehouse']} ({row['State Name']})"
-                            display_options.append(display_text)
-                            code_map[display_text] = str(row['Party Code'])
-                        
-                        selected_display = st.selectbox(
-                            "Select the correct party code:",
-                            options=display_options,
-                            key=f"party_code_select_{party}"
+                    if party_name_sheet and shipping_pin:
+                        party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
+                        party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
+                            lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
                         )
                         
-                        party_code_value = code_map[selected_display]
+                        match = party_code_master[
+                            (party_code_master[zipcode_col].astype(str) == str(shipping_pin)) &
+                            (party_code_master["_clean_name"] == party_name_clean)
+                        ]
+                            
+                        if match.empty:
+                            match = party_code_master[
+                                (party_code_master[zipcode_col].astype(str) == str(shipping_pin)) &
+                                (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
+                            ]
                         
-                    elif len(match) == 1:
-                        party_code_value = str(match.iloc[0]["Party Code"])
-                        st.info(f"✓ Party Code: {party_code_value} - {match.iloc[0]['Warehouse']}")
+                        # Handle multiple matches - let user select
+                        if len(match) > 1:
+                            st.warning(f"⚠️ Multiple party codes found for zipcode {shipping_pin}")
+                            
+                            # Create display options with Party Code - Warehouse - State
+                            display_options = []
+                            code_map = {}
+                            for _, row in match.iterrows():
+                                display_text = f"{row['Party Code']} - {row['Warehouse']} ({row['State Name']})"
+                                display_options.append(display_text)
+                                code_map[display_text] = str(row['Party Code'])
+                            
+                            selected_display = st.selectbox(
+                                "Select the correct party code:",
+                                options=display_options,
+                                key=f"party_code_select_{party}"
+                            )
+                            
+                            party_code_value = code_map[selected_display]
+                            
+                        elif len(match) == 1:
+                            party_code_value = str(match.iloc[0]["Party Code"])
+                            st.info(f"✓ Party Code: {party_code_value} - {match.iloc[0]['Warehouse']}")
+                        else:
+                            st.error(f"❌ No party code found for zipcode {shipping_pin}")
+                            party_code_value = ""
                     else:
-                        st.error(f"❌ No party code found for zipcode {shipping_pin}")
+                        st.warning(f"⚠️ Could not extract party name or shipping address from PO")
                         party_code_value = ""
-                else:
-                    st.warning("DEBUG: party_name_sheet or shipping_pin is empty")
-                    
+                        
             except Exception as e:
                 party_code_value = ""
                 st.error(f"Error finding party code: {str(e)}")
