@@ -989,6 +989,10 @@ if po_df is not None and master_df is not None:
             try:
                 party_name_sheet = ""
                 shipping_pin = ""
+                
+                # Debug: Show what we're looking for
+                st.write("DEBUG: Looking for party code...")
+                
                 for row in ws.iter_rows(min_row=1, max_row=table_header_row):
                     label = str(row[0].value).strip().lower() if row[0].value else ""
                         
@@ -1004,21 +1008,34 @@ if po_df is not None and master_df is not None:
                             shipping_pin = addr.strip()
                         else:
                             shipping_pin = ""
+                
+                # Debug output
+                st.write(f"DEBUG: Party Name from PO: '{party_name_sheet}'")
+                st.write(f"DEBUG: Shipping Pin from PO: '{shipping_pin}'")
+                st.write(f"DEBUG: PartyCode master columns: {party_code_master.columns.tolist()}")
+                st.write(f"DEBUG: Sample ZipCodes in master: {party_code_master['ZipCode'].head().tolist()}")
+                
                 if party_name_sheet and shipping_pin:
                     party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
+                    st.write(f"DEBUG: Cleaned party name: '{party_name_clean}'")
+                    
                     party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
                         lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
                     )
+                    
                     match = party_code_master[
                         (party_code_master["ZipCode"].astype(str) == str(shipping_pin)) &
                         (party_code_master["_clean_name"] == party_name_clean)
                     ]
+                    
+                    st.write(f"DEBUG: First match attempt found {len(match)} matches")
                         
                     if match.empty:
                         match = party_code_master[
                             (party_code_master["ZipCode"].astype(str) == str(shipping_pin)) &
                             (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
                         ]
+                        st.write(f"DEBUG: Second match attempt found {len(match)} matches")
                     
                     # Handle multiple matches - let user select
                     if len(match) > 1:
@@ -1046,6 +1063,9 @@ if po_df is not None and master_df is not None:
                     else:
                         st.error(f"❌ No party code found for zipcode {shipping_pin}")
                         party_code_value = ""
+                else:
+                    st.warning("DEBUG: party_name_sheet or shipping_pin is empty")
+                    
             except Exception as e:
                 party_code_value = ""
                 st.error(f"Error finding party code: {str(e)}")
