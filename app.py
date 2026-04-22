@@ -1010,13 +1010,13 @@ if po_df is not None and master_df is not None:
                         lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
                     )
                     match = party_code_master[
-                        (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
+                        (party_code_master["ZipCode"].astype(str) == str(shipping_pin)) &
                         (party_code_master["_clean_name"] == party_name_clean)
                     ]
                         
                     if match.empty:
                         match = party_code_master[
-                            (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
+                            (party_code_master["ZipCode"].astype(str) == str(shipping_pin)) &
                             (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
                         ]
                     
