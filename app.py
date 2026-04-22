@@ -46,41 +46,39 @@ if os.path.exists(parser_path):
 
     # ================== PARTY CODE MASTER ==================
     PARTY_CODE_FILE = os.path.join(BASE_DIR, "PartyCode.xlsx")
-
     def load_party_code_master():
-
         if not os.path.exists(PARTY_CODE_FILE):
             return None
-
         pc = pd.read_excel(PARTY_CODE_FILE)
         pc.columns = pc.columns.astype(str).str.strip()
-
         rename = {}
-
         for c in pc.columns:
             cl = str(c).lower()
-
             if "party" in cl and "name" in cl:
                 rename[c] = "Party Name"
-
             elif "pin" in cl or "zip" in cl:
                 rename[c] = "Pincode"
-
             elif "party" in cl and "code" in cl:
                 rename[c] = "Party Code"
-
+            elif "warehouse" in cl:
+                rename[c] = "Warehouse"
+            elif "state" in cl and "name" in cl:
+                rename[c] = "State Name"
         pc = pc.rename(columns=rename)
-
         required = ["Party Name", "Pincode", "Party Code"]
         if not all(c in pc.columns for c in required):
             return None
-
         pc["Party Name"] = pc["Party Name"].astype(str).str.strip().str.lower()
         pc["Pincode"] = pc["Pincode"].astype(str).str.extract(r"(\d{6})")
-
-        return pc[required]
-
-
+        
+        # Return all columns (including optional Warehouse and State Name)
+        return_cols = required.copy()
+        if "Warehouse" in pc.columns:
+            return_cols.append("Warehouse")
+        if "State Name" in pc.columns:
+            return_cols.append("State Name")
+        
+        return pc[return_cols]
 # ================== EMAIL CONFIGURATION ==================
 def load_email_config():
     """Load email configuration from Streamlit secrets or Excel file"""
