@@ -1279,7 +1279,11 @@ if po_df is not None and master_df is not None:
 
         st.session_state['po_date'] = po_date
         st.session_state['po_expiry_date'] = po_expiry_date
-        st.rerun()
+        # ✅ CLEAR THE RUNNING FLAG TO STOP THE LOOP
+        if 'validation_running' in st.session_state:
+            del st.session_state['validation_running']
+        # ✅ REMOVE st.rerun() - DON'T RERUN HERE!
+
 
 
 else:
