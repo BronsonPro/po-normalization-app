@@ -583,6 +583,10 @@ if st.session_state.get('validation_success', False):
 
 if po_df is not None and master_df is not None:
     if st.button("▶ Run Validation"):
+        for key in list(st.session_state.keys()):
+            if 'party_code_confirmed' in key:
+                del st.session_state[key]
+                
         po = po_df.copy()
         master = master_df.copy()
         rack_master = load_rack_master()
@@ -972,74 +976,90 @@ if po_df is not None and master_df is not None:
         filename = f"{safe_party}_{safe_po}.xlsx"
         final_path = os.path.join(tempfile.gettempdir(), filename)
         # ========== END TEMPORARY CHANGE - Continue with rest of code ==========    
-            
+                    
         # ========== EXTRACT PARTY CODE BEFORE CREATING EXCEL ==========
         party_code_value = ""
-        if party_code_master is not None:
-            try:
-                # Extract shipping pin from final_raw DataFrame (not ws)
-                shipping_pin = ""
-                party_name_sheet = ""
-                
-                for i in range(table_header_row):
-                    label = str(final_raw.iloc[i, 0]).strip().lower() if pd.notna(final_raw.iloc[i, 0]) else ""
+        
+        # Check if party code already selected in session state
+        if f'party_code_confirmed_{party}' in st.session_state:
+            party_code_value = st.session_state[f'party_code_confirmed_{party}']
+            st.success(f"✓ Using Party Code: {party_code_value}")
+        else:
+            # Need to get party code selection
+            if party_code_master is not None:
+                try:
+                    # Extract shipping pin from final_raw DataFrame
+                    shipping_pin = ""
+                    party_name_sheet = ""
                     
-                    if label == "party name":
-                        party_name_sheet = str(final_raw.iloc[i, 1]).strip().lower() if pd.notna(final_raw.iloc[i, 1]) else ""
-                    
-                    if label == "shipping address":
-                        addr = str(final_raw.iloc[i, 1]) if pd.notna(final_raw.iloc[i, 1]) else ""
-                        pin_match = re.findall(r"\d{6}", addr)
-                        if pin_match:
-                            shipping_pin = pin_match[0]
-                
-                if party_name_sheet and shipping_pin:
-                    party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
-                    party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
-                        lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
-                    )
-                    
-                    match = party_code_master[
-                        (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
-                        (party_code_master["_clean_name"] == party_name_clean)
-                    ]
-                    
-                    if match.empty:
-                        match = party_code_master[
-                            (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
-                            (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
-                        ]
-                    
-                    # Handle multiple matches
-                    if len(match) > 1:
-                        st.warning(f"⚠️ Multiple party codes found for zipcode {shipping_pin}")
+                    for i in range(table_header_row):
+                        label = str(final_raw.iloc[i, 0]).strip().lower() if pd.notna(final_raw.iloc[i, 0]) else ""
                         
-                        display_options = []
-                        code_map = {}
-                        for _, row in match.iterrows():
-                            display_text = f"{row['Party Code']} - {row['Warehouse']} ({row['State Name']})"
-                            display_options.append(display_text)
-                            code_map[display_text] = str(row['Party Code'])
+                        if label == "party name":
+                            party_name_sheet = str(final_raw.iloc[i, 1]).strip().lower() if pd.notna(final_raw.iloc[i, 1]) else ""
                         
-                        selected_display = st.selectbox(
-                            "Select the correct party code:",
-                            options=display_options,
-                            key=f"party_code_select_{party}_final"
+                        if label == "shipping address":
+                            addr = str(final_raw.iloc[i, 1]) if pd.notna(final_raw.iloc[i, 1]) else ""
+                            pin_match = re.findall(r"\d{6}", addr)
+                            if pin_match:
+                                shipping_pin = pin_match[0]
+                    
+                    if party_name_sheet and shipping_pin:
+                        party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
+                        party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
+                            lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
                         )
                         
-                        party_code_value = code_map[selected_display]
-                        st.info(f"Selected: {party_code_value}")
+                        match = party_code_master[
+                            (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
+                            (party_code_master["_clean_name"] == party_name_clean)
+                        ]
                         
-                    elif len(match) == 1:
-                        party_code_value = str(match.iloc[0]["Party Code"])
-                        st.success(f"✓ Party Code: {party_code_value} - {match.iloc[0]['Warehouse']}")
-                    else:
-                        st.error(f"❌ No party code found for zipcode {shipping_pin}")
-                        party_code_value = ""
-            except Exception as e:
-                st.error(f"Error finding party code: {str(e)}")
-                party_code_value = ""
-        # ========== END PARTY CODE EXTRACTION ==========        
+                        if match.empty:
+                            match = party_code_master[
+                                (party_code_master["Pincode"].astype(str) == str(shipping_pin)) &
+                                (party_code_master["_clean_name"].str.contains(party_name_clean, na=False, regex=False))
+                            ]
+                        
+                        # Handle multiple matches
+                        if len(match) > 1:
+                            st.warning(f"⚠️ Multiple party codes found for zipcode {shipping_pin}")
+                            
+                            display_options = []
+                            code_map = {}
+                            for _, row in match.iterrows():
+                                display_text = f"{row['Party Code']} - {row['Warehouse']} ({row['State Name']})"
+                                display_options.append(display_text)
+                                code_map[display_text] = str(row['Party Code'])
+                            
+                            selected_display = st.selectbox(
+                                "Select the correct party code:",
+                                options=display_options,
+                                key=f"party_code_select_{party}_final"
+                            )
+                            
+                            party_code_value = code_map[selected_display]
+                            
+                            # Add confirm button
+                            if st.button("✓ Confirm Party Code and Continue", key="confirm_party_code_btn"):
+                                st.session_state[f'party_code_confirmed_{party}'] = party_code_value
+                                st.rerun()
+                            else:
+                                st.info("👆 Please confirm your selection to continue")
+                                st.stop()  # Stop here until user confirms
+                            
+                        elif len(match) == 1:
+                            party_code_value = str(match.iloc[0]["Party Code"])
+                            st.session_state[f'party_code_confirmed_{party}'] = party_code_value
+                            st.success(f"✓ Party Code: {party_code_value} - {match.iloc[0]['Warehouse']}")
+                        else:
+                            st.error(f"❌ No party code found for zipcode {shipping_pin}")
+                            party_code_value = ""
+                except Exception as e:
+                    st.error(f"Error finding party code: {str(e)}")
+                    party_code_value = ""
+        # ========== END PARTY CODE EXTRACTION ==========
+        
         final_raw.to_excel(final_path, index=False, header=False)
         from openpyxl import load_workbook
         from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
