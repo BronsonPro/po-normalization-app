@@ -876,14 +876,14 @@ if po_df is not None and master_df is not None:
 
         st.markdown("---")
         if st.button("🔄 Clear All & Start Fresh", key="clear_all_bottom"):
-                st.markdown(
-                """
-                <script>
-                    window.parent.location.reload();
-                </script>
-                """,
-                unsafe_allow_html=True
-            )
+            st.markdown(
+            """
+            <script>
+                window.parent.location.reload();
+            </script>
+            """,
+            unsafe_allow_html=True
+        )
             # ========== TEMPORARY: Allow process to continue even with mismatches ==========
             # TODO: Remove this line once master files are updated to enforce validation
             st.warning("⚠️ Continuing with mismatches (temporary setting)")
