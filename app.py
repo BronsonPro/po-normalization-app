@@ -583,10 +583,16 @@ if st.session_state.get('validation_success', False):
 
 if po_df is not None and master_df is not None:
     if st.button("▶ Run Validation"):
+        st.session_state['validation_running'] = True
+        st.rerun()
+
+if st.session_state.get('validation_running', False):
+    # Clear previous party code when FIRST starting validation
+    if 'temp_party_code_select' not in st.session_state:
         for key in list(st.session_state.keys()):
-            if 'party_code_confirmed' in key or 'temp_party_code_select' in key:
+            if 'temp_party_code_select' in key:
                 del st.session_state[key]
-                
+
         po = po_df.copy()
         master = master_df.copy()
         rack_master = load_rack_master()
