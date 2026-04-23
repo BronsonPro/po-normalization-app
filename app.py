@@ -973,13 +973,6 @@ if po_df is not None and master_df is not None:
         final_path = os.path.join(tempfile.gettempdir(), filename)
         # ========== END TEMPORARY CHANGE - Continue with rest of code ==========    
             
-        final_raw.to_excel(final_path, index=False, header=False)
-        from openpyxl import load_workbook
-        from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
-        from math import ceil
-
-        wb = load_workbook(final_path)
-        ws = wb.active
 
         # Add party code
         party_code_value = ""
@@ -1066,6 +1059,15 @@ if po_df is not None and master_df is not None:
             except Exception as e:
                 party_code_value = ""
                 st.error(f"Error finding party code: {str(e)}")
+# ========== END PARTY CODE EXTRACTION ==========
+        
+        final_raw.to_excel(final_path, index=False, header=False)
+        from openpyxl import load_workbook
+        from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
+        from math import ceil
+
+        wb = load_workbook(final_path)
+        ws = wb.active
                 
         insert_row = None
         for r in range(1, table_header_row + 2):
