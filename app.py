@@ -1044,9 +1044,6 @@ if po_df is not None and master_df is not None:
                             if st.button("✓ Confirm Party Code and Continue", key="confirm_party_code_btn"):
                                 st.session_state[f'party_code_confirmed_{party}'] = party_code_value
                                 st.rerun()
-                            else:
-                                st.info("👆 Please confirm your selection to continue")
-                                st.stop()  # Stop here until user confirms
                             
                         elif len(match) == 1:
                             party_code_value = str(match.iloc[0]["Party Code"])
