@@ -874,6 +874,13 @@ if po_df is not None and master_df is not None:
             st.dataframe(report, width="stretch")
             st.download_button("⬇ Download Mismatch Report", open(path, "rb"), "Mismatch_Report.xlsx")
 
+        st.markdown("---")
+        if st.button("🔄 Clear All & Start Fresh", key="clear_all_bottom"):
+            # Clear all session state
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+
             # ========== TEMPORARY: Allow process to continue even with mismatches ==========
             # TODO: Remove this line once master files are updated to enforce validation
             st.warning("⚠️ Continuing with mismatches (temporary setting)")
