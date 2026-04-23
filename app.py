@@ -583,15 +583,16 @@ if st.session_state.get('validation_success', False):
 
 if po_df is not None and master_df is not None:
     if st.button("▶ Run Validation"):
+        # Clear validation_complete flag when starting new validation
+        if 'validation_complete' in st.session_state:
+            del st.session_state['validation_complete']
         st.session_state['validation_running'] = True
-        st.rerun()
-
-if st.session_state.get('validation_running', False):
-    # Clear previous party code when FIRST starting validation
-    if 'temp_party_code_select' not in st.session_state:
-        for key in list(st.session_state.keys()):
-            if 'temp_party_code_select' in key:
-                del st.session_state[key]
+    
+    # Run validation if button clicked OR if completing after party code selection
+    if st.session_state.get('validation_running', False) or st.session_state.get('validation_complete', False):
+        # Clear validation_complete flag after using it
+        if st.session_state.get('validation_complete', False):
+            del st.session_state['validation_complete']
 
         po = po_df.copy()
         master = master_df.copy()
@@ -982,10 +983,9 @@ if st.session_state.get('validation_running', False):
         filename = f"{safe_party}_{safe_po}.xlsx"
         final_path = os.path.join(tempfile.gettempdir(), filename)
         # ========== END TEMPORARY CHANGE - Continue with rest of code ==========    
-                            
+                                    
         # ========== EXTRACT PARTY CODE BEFORE CREATING EXCEL ==========
         party_code_value = ""
-        party_code_ready = False
         
         if party_code_master is not None:
             try:
@@ -1024,12 +1024,15 @@ if st.session_state.get('validation_running', False):
                     
                     # Handle multiple matches
                     if len(match) > 1:
-                        # Check if already selected in this run
-                        if f'temp_party_code_select_{party}' in st.session_state:
-                            party_code_value = st.session_state[f'temp_party_code_select_{party}']
-                            party_code_ready = True
+                        # Create a unique key for this PO
+                        po_key = f"{party}_{shipping_pin}_{po_number}"
+                        
+                        # Check if already selected
+                        if po_key in st.session_state:
+                            party_code_value = st.session_state[po_key]
                             st.success(f"✓ Using Party Code: {party_code_value}")
                         else:
+                            # Show dropdown and wait for selection
                             st.warning(f"⚠️ Multiple party codes found for zipcode {shipping_pin}")
                             
                             display_options = []
@@ -1042,32 +1045,29 @@ if st.session_state.get('validation_running', False):
                             selected_display = st.selectbox(
                                 "Select the correct party code:",
                                 options=display_options,
-                                key=f"party_code_select_dropdown_{party}"
+                                key=f"pc_dropdown_{po_key}"
                             )
                             
-                            if st.button("✓ Confirm and Continue", key="confirm_pc_btn"):
-                                st.session_state[f'temp_party_code_select_{party}'] = code_map[selected_display]
+                            if st.button("✓ Confirm and Continue", key=f"pc_confirm_{po_key}"):
+                                # Save selection and mark validation as complete
+                                st.session_state[po_key] = code_map[selected_display]
+                                st.session_state['validation_complete'] = True
                                 st.rerun()
+                            else:
+                                # Stop here - waiting for confirmation
+                                st.stop()
                         
                     elif len(match) == 1:
                         party_code_value = str(match.iloc[0]["Party Code"])
-                        party_code_ready = True
                         st.success(f"✓ Party Code: {party_code_value} - {match.iloc[0]['Warehouse']}")
                     else:
                         st.error(f"❌ No party code found for zipcode {shipping_pin}")
                         party_code_value = ""
-                        party_code_ready = True  # Continue anyway with blank
             except Exception as e:
                 st.error(f"Error finding party code: {str(e)}")
                 party_code_value = ""
-                party_code_ready = True
-        else:
-            party_code_ready = True  # No party code master, continue
+        # ========== END PARTY CODE EXTRACTION ==========
         
-        # Only continue if party code is ready
-        if not party_code_ready:
-            st.stop()
-        # ========== END PARTY CODE EXTRACTION ==========        
         final_raw.to_excel(final_path, index=False, header=False)
         from openpyxl import load_workbook
         from openpyxl.styles import Alignment, Border, Side, Font, PatternFill
