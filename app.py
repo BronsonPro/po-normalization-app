@@ -869,15 +869,15 @@ if po_df is not None and master_df is not None:
             st.session_state['mismatch_report'] = report
             st.session_state['mismatch_path'] = path
 
-            if not st.session_state.get('validation_complete', False):
-                st.error("❌ Mismatch found")
-                st.dataframe(report, width="stretch")
-                st.download_button("⬇ Download Mismatch Report", open(path, "rb"), "Mismatch_Report.xlsx")
+            
+            st.error("❌ Mismatch found")
+            st.dataframe(report, width="stretch")
+            st.download_button("⬇ Download Mismatch Report", open(path, "rb"), "Mismatch_Report.xlsx")
     
-                # ========== TEMPORARY: Allow process to continue even with mismatches ==========
-                # TODO: Remove this line once master files are updated to enforce validation
-                st.warning("⚠️ Continuing with mismatches (temporary setting)")
-                # ========== END TEMPORARY ==========
+            # ========== TEMPORARY: Allow process to continue even with mismatches ==========
+            # TODO: Remove this line once master files are updated to enforce validation
+            st.warning("⚠️ Continuing with mismatches (temporary setting)")
+            # ========== END TEMPORARY ==========
 
         else:
             st.success("✅ No mismatches found. Updating Product Name & HSN Code from Master.")
