@@ -130,6 +130,17 @@ def extract_line_items_and_text_totals(pdf_path):
 def clean_and_validate_line_items(df):
     df = df.copy()
 
+        # ✅ ADD THIS: Clean HSN Code - extract only numeric part
+    def clean_hsn(x):
+        if pd.isna(x):
+            return ""
+        s = str(x).strip()
+        # Extract only the first 4-8 digits
+        m = re.match(r'^(\d{4,8})', s)
+        return m.group(1) if m else ""
+    
+    df["HSN"] = df["HSN"].apply(clean_hsn)
+    
     money_cols = [
         "MRP", "Unit Price", "Taxable Value",
         "CGST Amt", "SGST Amt", "IGST Amt", "Total"
