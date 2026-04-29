@@ -786,12 +786,19 @@ if po_df is not None and master_df is not None:
             # Don't drop rows with missing EAN for Scootsy
             master["EAN"] = master["EAN"].fillna(0).astype("int64")
         else:
-            po["EAN"] = pd.to_numeric(po["EAN"], errors="coerce")
-            master["EAN"] = pd.to_numeric(master["EAN"], errors="coerce")
-            po = po.dropna(subset=["EAN"])
-            master = master.dropna(subset=["EAN"])
-            po["EAN"] = po["EAN"].astype("int64")
-            master["EAN"] = master["EAN"].astype("int64")
+            if party == "Nykaa":
+                # Nykaa can have alphanumeric EANs - keep as string
+                po["EAN"] = po["EAN"].astype(str).str.strip()
+                master["EAN"] = master["EAN"].astype(str).str.strip()
+                po = po[po["EAN"].str.len() > 0]
+                master = master[master["EAN"].str.len() > 0]
+            else:
+                po["EAN"] = pd.to_numeric(po["EAN"], errors="coerce")
+                master["EAN"] = pd.to_numeric(master["EAN"], errors="coerce")
+                po = po.dropna(subset=["EAN"])
+                master = master.dropna(subset=["EAN"])
+                po["EAN"] = po["EAN"].astype("int64")
+                master["EAN"] = master["EAN"].astype("int64")
 
         for c in po_req:
             if c not in ["EAN", "Item Code"]:
