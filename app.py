@@ -903,7 +903,17 @@ if po_df is not None and master_df is not None:
         
         # Add rack number
         if rack_master is not None:
+            #upd = upd.merge(rack_master, on="EAN", how="left")
+            print(f"DEBUG: upd rows BEFORE rack merge: {len(upd)}")
             upd = upd.merge(rack_master, on="EAN", how="left")
+            print(f"DEBUG: upd rows AFTER rack merge: {len(upd)}")
+    
+            # Check for duplicates
+            duplicates = upd[upd.duplicated(keep=False)]
+            if not duplicates.empty:
+                print(f"DEBUG: Found {len(duplicates)} duplicate rows after rack merge")
+                print(duplicates[["EAN", "Product Name", "Rack Number"]].head(10))
+
         else:
             upd["Rack Number"] = ""
         
