@@ -1052,12 +1052,6 @@ if po_df is not None and master_df is not None:
                                 # Save selection and mark validation as complete
                                 st.session_state[po_key] = code_map[selected_display]
                                 st.session_state['validation_complete'] = True
-
-                                if 'mismatch_report' in st.session_state:
-                                    del st.session_state['mismatch_report']
-                                if 'mismatch_path' in st.session_state:
-                                    del st.session_state['mismatch_path']
-
                                 st.rerun()
                             else:
                                 # Stop here - waiting for confirmation
