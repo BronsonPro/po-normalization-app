@@ -497,6 +497,14 @@ def read_normalized_po_table(excel_path):
         # For Scootsy, keep all rows - don't filter by quantity or numeric columns
         # Values will be populated from master file later
         pass
+
+    elif party == "Nykaa":
+    # For Nykaa, don't filter by numeric EAN (they have alphanumeric EANs)
+    df = df[
+        ((df[qty_col] > 0) if qty_col else True) &
+        ~((df[numeric_cols].sum(axis=1)) == 0)
+    ].copy()
+
     else:
         df = df[
             (df["__ean_num"].notna()) &
