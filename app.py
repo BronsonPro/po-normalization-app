@@ -910,6 +910,10 @@ if po_df is not None and master_df is not None:
         
         # Add rack number
         if rack_master is not None:
+                # Convert rack_master EAN to match upd EAN type
+            if party == "Nykaa":
+                rack_master["EAN"] = rack_master["EAN"].astype(str).str.strip()
+
             upd = upd.merge(rack_master, on="EAN", how="left")
         else:
             upd["Rack Number"] = ""
