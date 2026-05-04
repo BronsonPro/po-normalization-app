@@ -424,13 +424,18 @@ def load_rack_master():
     if "EAN" not in rack.columns or "Rack Number" not in rack.columns:
         return None
 
-    rack["EAN"] = pd.to_numeric(rack["EAN"], errors="coerce")
-    rack = rack.dropna(subset=["EAN"])
-    rack["EAN"] = rack["EAN"].astype("int64")
-
+    # Keep EAN as string to support alphanumeric codes (for Nykaa, etc.)
+    rack["EAN"] = rack["EAN"].astype(str).str.strip()
+    rack = rack[rack["EAN"].str.len() > 0]
+    rack = rack[rack["EAN"] != "nan"]
+    
     return rack[["EAN", "Rack Number"]]
+    
+    #rack["EAN"] = pd.to_numeric(rack["EAN"], errors="coerce")
+    #rack = rack.dropna(subset=["EAN"])
+    #rack["EAN"] = rack["EAN"].astype("int64")
 
-
+    #return rack[["EAN", "Rack Number"]]
 # ================== TITLE ==================
 st.title("📄 PO Normalization & Validation App")
 
@@ -722,10 +727,9 @@ if po_df is not None and master_df is not None:
         if party == "Scootsy":
             if "Item Code" in po.columns:
                 po = po.drop_duplicates(subset=["Item Code"], keep="first")
-        elif party == "Nykaa":
-            # For Nykaa, don't deduplicate - alphanumeric EANs might cause issues
-            pass
-
+        elif party != "Nykaa":  # ← Skip dedup for Nykaa
+            if "EAN" in po.columns:
+                po = po.drop_duplicates(subset=["EAN"], keep="first")
         else:
             if "EAN" in po.columns:
                 po = po.drop_duplicates(subset=["EAN"], keep="first")
@@ -793,20 +797,11 @@ if po_df is not None and master_df is not None:
             master["EAN"] = master["EAN"].fillna(0).astype("int64")
         else:
             if party == "Nykaa":
-                st.write(f"DEBUG: PO has {len(po)} rows before EAN conversion")
-                debug_check = po[po["EAN"].astype(str).str.contains("NYBRONSON0037|BRONS00000257", na=False)]
-                st.write(f"DEBUG: Found {len(debug_check)} rows with problematic EANs BEFORE conversion")
-
                 # Nykaa can have alphanumeric EANs - keep as string
                 po["EAN"] = po["EAN"].astype(str).str.strip()
                 master["EAN"] = master["EAN"].astype(str).str.strip()
                 po = po[po["EAN"].str.len() > 0]
                 master = master[master["EAN"].str.len() > 0]
-
-                # DEBUG: Check after conversion
-                st.write(f"DEBUG: PO has {len(po)} rows AFTER EAN conversion")
-                debug_check2 = po[po["EAN"].str.contains("NYBRONSON0037|BRONS00000257", na=False)]
-                st.write(f"DEBUG: Found {len(debug_check2)} rows with problematic EANs AFTER conversion")
 
             else:
                 po["EAN"] = pd.to_numeric(po["EAN"], errors="coerce")
