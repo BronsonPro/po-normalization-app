@@ -722,6 +722,10 @@ if po_df is not None and master_df is not None:
         if party == "Scootsy":
             if "Item Code" in po.columns:
                 po = po.drop_duplicates(subset=["Item Code"], keep="first")
+        elif party == "Nykaa":
+            # For Nykaa, don't deduplicate - alphanumeric EANs might cause issues
+            pass
+
         else:
             if "EAN" in po.columns:
                 po = po.drop_duplicates(subset=["EAN"], keep="first")
