@@ -558,8 +558,6 @@ if po_file:
 
         convert_pdf_to_excel(input_path, converted_po_path)
         po_df, raw_po, table_header_row = read_normalized_po_table(converted_po_path)
-        st.write(f"🔍 LOADED FROM FILE: {len(po_df)} rows")
-        st.write(f"🔍 Raw PO shape: {raw_po.shape}")
         st.download_button("⬇ Download Converted PO", open(converted_po_path, "rb"), "PO_Converted.xlsx")
 
     else:
