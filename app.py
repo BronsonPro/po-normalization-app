@@ -820,6 +820,15 @@ if po_df is not None and master_df is not None:
             
         else:
             merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
+            # Debug: Check for rows 83 and 97
+            debug_eans = ["NYBRONSON0037", "BRONS00000257"]
+            debug_rows = merged[merged["EAN"].isin(debug_eans)]
+            if not debug_rows.empty:
+                st.write("DEBUG: Found problematic EANs in merged data:")
+                st.write(debug_rows[["EAN", "Product Name_PO", "MRP_MASTER"]])
+            else:
+                st.write(f"DEBUG: EANs {debug_eans} NOT found in merged data - they were dropped!")
+
 
         for col in merged.select_dtypes(include=['object']).columns:
             merged[col] = merged[col].astype(str)
