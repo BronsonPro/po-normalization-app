@@ -597,12 +597,6 @@ if po_df is not None and master_df is not None:
         po = po_df.copy()
         master = master_df.copy()
 
-        # DEBUG: Check raw data
-        st.write(f"DEBUG: Raw PO has {len(po)} rows")
-        if "EAN" in po.columns:
-            debug_raw = po[po["EAN"].astype(str).str.contains("NYBRONSON|BRONS", na=False, case=False)]
-            st.write(f"DEBUG: Raw PO rows with NYBRONSON or BRONS: {len(debug_raw)}")
-    
         
         rack_master = load_rack_master()
         party_code_master = load_party_code_master()
@@ -723,15 +717,6 @@ if po_df is not None and master_df is not None:
 
         po = normalize(po, is_master=False)
         master = normalize(master, is_master=True)
-
-        # DEBUG: Check right after normalization
-        st.write(f"DEBUG: PO has {len(po)} rows after normalize")
-        if "EAN" in po.columns:
-            debug_check = po[po["EAN"].astype(str).str.contains("NYBRONSON|BRONS", na=False, case=False)]
-            st.write(f"DEBUG: Rows with NYBRONSON or BRONS EAN: {len(debug_check)}")
-            if not debug_check.empty:
-                st.write(debug_check[["EAN", "Product Name"]].head())
-
 
         # SCOOTSY FIX #3: Deduplicate on Item Code for Scootsy, EAN for others
         if party == "Scootsy":
