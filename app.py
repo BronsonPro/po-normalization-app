@@ -500,10 +500,10 @@ def read_normalized_po_table(excel_path):
 
     elif party == "Nykaa":
     # For Nykaa, don't filter by numeric EAN (they have alphanumeric EANs)
-    df = df[
-        ((df[qty_col] > 0) if qty_col else True) &
-        ~((df[numeric_cols].sum(axis=1)) == 0)
-    ].copy()
+        df = df[
+            ((df[qty_col] > 0) if qty_col else True) &
+            ~((df[numeric_cols].sum(axis=1)) == 0)
+        ].copy()
 
     else:
         df = df[
