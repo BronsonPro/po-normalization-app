@@ -932,7 +932,12 @@ if po_df is not None and master_df is not None:
                 # Convert rack_master EAN to match upd EAN type
             if party == "Nykaa":
                 rack_master["EAN"] = rack_master["EAN"].astype(str).str.strip()
-
+            else:
+                # For other parties, convert rack_master EAN to int64
+                rack_master["EAN"] = pd.to_numeric(rack_master["EAN"], errors="coerce")
+                rack_master = rack_master.dropna(subset=["EAN"])
+                rack_master["EAN"] = rack_master["EAN"].astype("int64")
+                
             upd = upd.merge(rack_master, on="EAN", how="left")
         else:
             upd["Rack Number"] = ""
