@@ -7,8 +7,8 @@ def convert_pdf_to_excel(pdf_path: str, output_path: str) -> None:
     """
     Parse a FOY Purchase Order PDF and write a standardised Excel file.
 
-    Columns produced (matching the app.py expected schema):
-        Sr No | Item Code | EAN | Product Name | HSN Code | Qty |
+    Columns produced:
+        Sr No | Item Code | Product Name | HSN Code | Qty |
         Base Rate | Discount | Taxable Value |
         CGST Rate | CGST Amt | SGST Rate | SGST Amt |
         IGST Rate | IGST Amt | Total
@@ -20,30 +20,34 @@ def convert_pdf_to_excel(pdf_path: str, output_path: str) -> None:
 
     df = pd.DataFrame(items)
 
-    # EAN is not present in the PO — it is looked up from master via Item Code in app.py
-    df.insert(2, "EAN", "")
-
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="FOY PO")
 
     print(f"✅ FOY parser: {len(df)} items written to {output_path}")
 
 
-def _extract_line_items(pdf_path: str) -> list[dict]:
-    """Extract all line items from the FOY PO PDF."""
-    r = PdfReader(pdf_path)
-    pages_text = [page.extract_text() or "" for page in r.pages]
+def _extract_line_items(pdf_path: str) -> list:
+    """Extract all line items from the FOY PO PDF using pdfplumber."""
+
+    # Extract text from all pages
+    pages_text = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                pages_text.append(text)
+
     full_text = "\n".join(pages_text)
 
-    # Remove page-break carry-over: a standalone total number that appears at
-    # the top of the next page (e.g. "14699.99\n9 FOY003538 :")
+    # Remove page-break carry-over: standalone total number that appears at
+    # top of next page (e.g. "14699.99\n9 FOY003538 :")
     full_text = re.sub(
         r'(Brand:[^\n]+\n)([\d.]+\n)(\d+\s+FOY)',
         r'\1\3',
         full_text,
     )
 
-    # Each item follows the pattern:
+    # Each item pattern:
     #   <sno>  FOY<code> : <product name (multi-line)>
     #   [Colour: ...]  [Size: ...]  [Brand: ...]
     #   <HSN:8d>  <Qty>  <BaseCost>  <Discount>  <TaxableValue>
