@@ -858,12 +858,11 @@ if po_df is not None and master_df is not None:
             merged = po.merge(master, on="Item Code", how="left", suffixes=("_PO", "_MASTER"))
             merged["Product Name"] = merged["Product Name_MASTER"].fillna(merged["Product Name_PO"])
         elif party == "FOY":
+            if "EAN" in po.columns:
+                po = po.drop(columns=["EAN"])
             merged = po.merge(master, on="Item Code", how="left", suffixes=("_PO", "_MASTER"))
             merged["Product Name"] = merged["Product Name_MASTER"].fillna(merged["Product Name_PO"])
-            st.write(f"merged columns: {merged.columns.tolist()}")
-            st.write(f"Base Rate_MASTER sample: {merged['Base Rate_MASTER'].head(3).tolist() if 'Base Rate_MASTER' in merged.columns else 'NOT FOUND'}")
-
-            
+                    
         else:
             merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
 
