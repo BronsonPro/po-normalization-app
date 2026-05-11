@@ -33,7 +33,7 @@ parser_files = {
     "Myntra": "parsers/myntra.py",
     "Health & Glow": "parsers/healthandglow.py",
     "Slikk": "parsers/slikk.py",
-    "FOY": "parsers/foy.py"
+    "FOY": "parsers/Foy.py"
 }
 
 parser_path = os.path.join(BASE_DIR, parser_files.get(party, ""))
