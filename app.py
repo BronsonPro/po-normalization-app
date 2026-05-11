@@ -459,7 +459,7 @@ def read_normalized_po_table(excel_path):
     df.columns = df.columns.astype(str).str.strip()
 
     # Stop at total row
-    stop_words = ["total amount", "grand total", "total tax"]
+    stop_words = ["total amount", "grand total", "total tax", "total base value"]
     for i in range(len(df)):
         row_text = " ".join([str(x) for x in df.iloc[i].fillna("").tolist()]).lower()
         # row_text = " ".join(df.iloc[i].astype(str).str.lower().tolist())
