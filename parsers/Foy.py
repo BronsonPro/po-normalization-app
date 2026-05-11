@@ -5,33 +5,56 @@ import re
 
 def convert_pdf_to_excel(pdf_path: str, output_path: str) -> None:
     """
-    Parse a FOY Purchase Order PDF and write a standardised Excel file.
-
-    Columns produced:
-        Sr No | Item Code | Product Name | HSN Code | Qty |
-        Base Rate | Discount | Taxable Value |
-        CGST Rate | CGST Amt | SGST Rate | SGST Amt |
-        IGST Rate | IGST Amt | Total
+    Parse a FOY Purchase Order PDF and write a standardised Excel file
+    matching the app.py expected format (header rows + table + summary).
     """
-    items = _extract_line_items(pdf_path)
+    header_info, items, summary = _extract_all(pdf_path)
 
     if not items:
         raise ValueError("No line items could be extracted from the FOY PO PDF.")
 
-    df = pd.DataFrame(items)
-    df.insert(2, "EAN", "")   # ← add this line
+    # Build item DataFrame and insert empty EAN column
+    # so read_normalized_po_table finds the header row
+    df_items = pd.DataFrame(items)
+    df_items.insert(2, "EAN", "")
 
+    # Header metadata rows (Party Name, PO No, PO Date, etc.)
+    header_rows = list(header_info.items())  # list of (key, val) tuples
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="FOY PO")
+        # Write header metadata (no column headers, raw rows)
+        df_header = pd.DataFrame(header_rows)
+        df_header.to_excel(writer, index=False, header=False,
+                           sheet_name="FOY PO", startrow=0)
 
-    print(f"✅ FOY parser: {len(df)} items written to {output_path}")
+        # Blank separator rows
+        blank_start = len(header_rows)
+        ws = writer.sheets["FOY PO"]
+        for i in range(3):
+            ws.cell(row=blank_start + i + 1, column=1, value="")
+
+        # Write item table below header block + blanks
+        table_start = blank_start + 3
+        df_items.to_excel(writer, index=False, sheet_name="FOY PO",
+                          startrow=table_start)
+
+        # Write summary rows below items
+        summary_start = table_start + len(df_items) + 2  # +1 header +1 blank
+        summary_rows = [
+            ("Total Base Value", summary.get("taxable_total", "")),
+            ("Total Tax",        summary.get("tax_total", "")),
+            ("Grand Total",      summary.get("grand_total", "")),
+        ]
+        for i, (label, val) in enumerate(summary_rows):
+            ws.cell(row=summary_start + i + 1, column=1, value=label)
+            ws.cell(row=summary_start + i + 1, column=2, value=val)
+
+    print(f"✅ FOY parser: {len(df_items)} items written to {output_path}")
 
 
-def _extract_line_items(pdf_path: str) -> list:
-    """Extract all line items from the FOY PO PDF using pdfplumber."""
+def _extract_all(pdf_path: str):
+    """Extract header info, line items and summary from FOY PO PDF."""
 
-    # Extract text from all pages
     pages_text = []
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
@@ -41,28 +64,54 @@ def _extract_line_items(pdf_path: str) -> list:
 
     full_text = "\n".join(pages_text)
 
-    # Remove page-break carry-over: standalone total number that appears at
-    # top of next page (e.g. "14699.99\n9 FOY003538 :")
+    # ── Header metadata ────────────────────────────────────────────────
+    header_info = {}
+    header_info["Party Name"] = "FOY E-RETAIL PVT LTD"
+
+    po_no = re.search(r'PO No\s*:\s*(\S+)', full_text)
+    if po_no:
+        header_info["PO No"] = po_no.group(1).strip()
+
+    po_date = re.search(r'PO Date\s*:\s*([A-Za-z]+ \d+,\s*\d{4})', full_text)
+    if po_date:
+        header_info["PO Date"] = po_date.group(1).strip()
+
+    po_release = re.search(r'PO Release Date\s*:\s*([A-Za-z]+ \d+,\s*\d{4})', full_text)
+    if po_release:
+        header_info["PO Expiry Date"] = po_release.group(1).strip()
+
+    # Shipping address — warehouse address block
+    ship_match = re.search(
+        r'FOY E-RETAIL PVT LTD \(WAREHOUSE\)(.*?)(?:GSTIN|$)',
+        full_text, re.DOTALL
+    )
+    if ship_match:
+        addr = re.sub(r'\s+', ' ', ship_match.group(1)).strip()
+        header_info["Shipping Address"] = addr
+
+    # GSTIN of FOY
+    gstin_matches = re.findall(r'GSTIN\s*:(\S+)', full_text)
+    if len(gstin_matches) >= 2:
+        header_info["GST No"] = gstin_matches[1].strip()  # second = FOY's GSTIN
+    elif gstin_matches:
+        header_info["GST No"] = gstin_matches[0].strip()
+
+    # ── Remove page-break carry-over orphan total ──────────────────────
     full_text = re.sub(
         r'(Brand:[^\n]+\n)([\d.]+\n)(\d+\s+FOY)',
         r'\1\3',
         full_text,
     )
 
-    # Each item pattern:
-    #   <sno>  FOY<code> : <product name (multi-line)>
-    #   [Colour: ...]  [Size: ...]  [Brand: ...]
-    #   <HSN:8d>  <Qty>  <BaseCost>  <Discount>  <TaxableValue>
-    #   <CGSTRate>  <CGSTAmt>  <SGSTRate>  <SGSTAmt>
-    #   <IGSTRate>  <IGSTAmt>  <Total>
+    # ── Line items ─────────────────────────────────────────────────────
     pattern = re.compile(
         r'(\d+)\s+(FOY\w+)\s*:(.*?)'    # sno, item code, product name start
-        r'(?:Colour:[^\n]*\n)?'          # optional Colour line
-        r'(?:Size:[^\n]*\n)?'            # optional Size line
-        r'(?:Brand:[^\n]*\n)?'           # optional Brand line
-        r'(\d{8})\s+'                    # HSN Code (8 digits)
+        r'(?:Colour:[^\n]*\n)?'
+        r'(?:Size:[^\n]*\n)?'
+        r'(?:Brand:[^\n]*\n)?'
+        r'(\d{8})\s+'                    # HSN Code
         r'(\d+)\s+'                      # Qty
-        r'([\d.]+)\s+'                   # Base Cost / Rate
+        r'([\d.]+)\s+'                   # Base Rate
         r'([\d.]+)\s+'                   # Discount
         r'([\d.]+)\s+'                   # Taxable Value
         r'([\d.]+)\s+'                   # CGST Rate
@@ -71,14 +120,13 @@ def _extract_line_items(pdf_path: str) -> list:
         r'([\d.]+)\s+'                   # SGST Amt
         r'([\d.]+)\s+'                   # IGST Rate
         r'([\d.]+)\s+'                   # IGST Amt
-        r'([\d.]+)',                      # Total (INR)
+        r'([\d.]+)',                      # Total
         re.DOTALL,
     )
 
     items = []
     for m in pattern.finditer(full_text):
         name_raw = m.group(3)
-        # Clean up the product name: collapse whitespace, drop trailing metadata
         name = re.sub(r'\s+', ' ', name_raw).strip()
         name = re.sub(r'\s*Colour:.*', '', name, flags=re.DOTALL).strip()
         name = re.sub(r'\s*Size:.*',   '', name, flags=re.DOTALL).strip()
@@ -102,4 +150,17 @@ def _extract_line_items(pdf_path: str) -> list:
             'Total':         float(m.group(15)),
         })
 
-    return items
+    # ── Summary ────────────────────────────────────────────────────────
+    summary = {}
+    taxable_match = re.search(r'Total Amount \(INR\)\s*([\d.]+)', full_text)
+    tax_match     = re.search(r'Total Tax \(INR\)\s*([\d.]+)', full_text)
+    grand_match   = re.search(r'Grand Total \(INR\)\s*([\d.]+)', full_text)
+
+    if taxable_match:
+        summary["taxable_total"] = float(taxable_match.group(1))
+    if tax_match:
+        summary["tax_total"] = float(tax_match.group(1))
+    if grand_match:
+        summary["grand_total"] = float(grand_match.group(1))
+
+    return header_info, items, summary
