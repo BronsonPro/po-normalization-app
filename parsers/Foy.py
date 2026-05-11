@@ -149,7 +149,7 @@ def _extract_all(pdf_path: str):
             'Product Name':  name,
             'HSN Code':      m.group(4),
             'Qty':           int(m.group(5)),
-            'Base Rate':     float(m.group(6))
+            'Base Rate':     float(m.group(6)),
             'GST %':         gst_pct,
             'Discount':      float(m.group(7)),
             'Taxable Value': float(m.group(8)),
