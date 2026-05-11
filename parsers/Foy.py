@@ -19,6 +19,8 @@ def convert_pdf_to_excel(pdf_path: str, output_path: str) -> None:
         raise ValueError("No line items could be extracted from the FOY PO PDF.")
 
     df = pd.DataFrame(items)
+    df.insert(2, "EAN", "")   # ← add this line
+
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="FOY PO")
