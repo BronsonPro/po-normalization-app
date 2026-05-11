@@ -743,7 +743,7 @@ if po_df is not None and master_df is not None:
         master = normalize(master, is_master=True)
 
         # SCOOTSY FIX #3: Deduplicate on Item Code for Scootsy, EAN for others
-        if party == "Scootsy":
+        if party in ("Scootsy", "FOY"):
             if "Item Code" in po.columns:
                 po = po.drop_duplicates(subset=["Item Code"], keep="first")
         elif party != "Nykaa":  # ← Skip dedup for Nykaa
@@ -944,7 +944,7 @@ if po_df is not None and master_df is not None:
         # Add rack number
         if rack_master is not None:
                 # Convert rack_master EAN to match upd EAN type
-            if party == "Nykaa":
+            if party in ("Nykaa", "FOY"):
                 rack_master["EAN"] = rack_master["EAN"].astype(str).str.strip()
             else:
                 # For other parties, convert rack_master EAN to int64
