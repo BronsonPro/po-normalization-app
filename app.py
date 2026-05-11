@@ -805,18 +805,26 @@ if po_df is not None and master_df is not None:
 
         # Validate numeric columns
         if party in ("Scootsy", "FOY"):
-            po["Item Code"] = pd.to_numeric(po["Item Code"], errors="coerce")
-            po = po.dropna(subset=["Item Code"])
-            po["Item Code"] = po["Item Code"].astype("int64")
-
-            master["Item Code"] = pd.to_numeric(master["Item Code"], errors="coerce")
-            master = master.dropna(subset=["Item Code"])
-            master["Item Code"] = master["Item Code"].astype("int64")
-
-            # Convert EAN but don't filter by it - some master items may have missing EAN
-            master["EAN"] = pd.to_numeric(master["EAN"], errors="coerce")
-            # Don't drop rows with missing EAN for Scootsy
-            master["EAN"] = master["EAN"].fillna(0).astype("int64")
+            if party == "Scootsy":
+                po["Item Code"] = pd.to_numeric(po["Item Code"], errors="coerce")
+                po = po.dropna(subset=["Item Code"])
+                po["Item Code"] = po["Item Code"].astype("int64")
+    
+                master["Item Code"] = pd.to_numeric(master["Item Code"], errors="coerce")
+                master = master.dropna(subset=["Item Code"])
+                master["Item Code"] = master["Item Code"].astype("int64")
+    
+                # Convert EAN but don't filter by it - some master items may have missing EAN
+                master["EAN"] = pd.to_numeric(master["EAN"], errors="coerce")
+                # Don't drop rows with missing EAN for Scootsy
+                master["EAN"] = master["EAN"].fillna(0).astype("int64")
+            elif party == "FOY":
+                po["Item Code"] = po["Item Code"].astype(str).str.strip()
+                master["Item Code"] = master["Item Code"].astype(str).str.strip()
+                master["EAN"] = pd.to_numeric(master["EAN"], errors="coerce")
+                master["EAN"] = master["EAN"].fillna(0).astype("int64")
+    
+            
         else:
             if party == "Nykaa":
                 # Nykaa can have alphanumeric EANs - keep as string
