@@ -460,14 +460,14 @@ def read_normalized_po_table(excel_path):
 
     # Stop at total row
     stop_words = ["total amount", "grand total", "total tax", "total base value"]
-        for i in range(len(df)):
-            row_text = " ".join([str(x) for x in df.iloc[i].fillna("").tolist()]).lower()
-            # row_text = " ".join(df.iloc[i].astype(str).str.lower().tolist())
-            if any(word in row_text for word in stop_words):
-                df = df.iloc[:i]
-                break
+    for i in range(len(df)):
+        row_text = " ".join([str(x) for x in df.iloc[i].fillna("").tolist()]).lower()
+        # row_text = " ".join(df.iloc[i].astype(str).str.lower().tolist())
+        if any(word in row_text for word in stop_words):
+            df = df.iloc[:i]
+            break
 
-        if party == "FOY":
+    if party == "FOY":
         df = df[df["Item Code"].astype(str).str.strip().str.startswith("FOY")]
 
     # Rename EAN column variations
