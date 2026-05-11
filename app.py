@@ -15,7 +15,7 @@ from email.mime.text import MIMEText
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ================== PARTY ==================
-party = st.selectbox("Select Party", ["Nykaa", "Zepto", "TiraBeauty", "TataCliq", "BlinkIt", "Scootsy", "BigBasket", "Manash", "DMart", "Myntra", "Health & Glow", "Slikk"])
+party = st.selectbox("Select Party", ["Nykaa", "Zepto", "TiraBeauty", "TataCliq", "BlinkIt", "Scootsy", "BigBasket", "Manash", "DMart", "Myntra", "Health & Glow", "Slikk", "FOY"])
 
 # ================== PARSER LOADING ==================
 convert_pdf_to_excel = None
@@ -32,7 +32,8 @@ parser_files = {
     "DMart": "parsers/dmart.py",
     "Myntra": "parsers/myntra.py",
     "Health & Glow": "parsers/healthandglow.py",
-    "Slikk": "parsers/slikk.py"
+    "Slikk": "parsers/slikk.py",
+    "FOY": "parsers/foy.py"
 }
 
 parser_path = os.path.join(BASE_DIR, parser_files.get(party, ""))
