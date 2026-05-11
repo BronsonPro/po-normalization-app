@@ -516,7 +516,7 @@ def read_normalized_po_table(excel_path):
     df.drop(columns="__ean_num", inplace=True)
     
     # Don't deduplicate Scootsy on EAN (it's empty) - will dedupe on Item Code later
-    if party != "Scootsy":
+    if party not in ("Scootsy", "FOY"):
         if "EAN" in df.columns:
             df = df.drop_duplicates(subset=["EAN"], keep="first")
     
