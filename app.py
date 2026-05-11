@@ -786,8 +786,8 @@ if po_df is not None and master_df is not None:
             po_req = ["Item Code", "MRP", "Base Rate", "GST %"]
             master_req = ["EAN", "Item Code", "Product Name"]
         elif party == "FOY":
-            po_req = ["Item Code", "MRP", "Base Rate", "GST %"]
-            master_req = ["EAN", "Item Code", "Product Name", "HSN Code"]
+            po_req = ["Item Code", "Base Rate", "GST %"]
+            master_req = ["EAN", "Item Code", "MRP", "Base Rate", "GST %", "Product Name", "HSN Code"]
         else:
             po_req = ["EAN", "MRP", "Base Rate", "GST %"]
             master_req = ["EAN", "MRP", "Base Rate", "GST %", "Product Name", "HSN Code"]
