@@ -15,6 +15,7 @@ def convert_pdf_to_excel(pdf_path: str, output_path: str) -> None:
 
     # Build item DataFrame
     df_items = pd.DataFrame(items)
+    df_items.insert(2, "EAN", "")  # ← ADD THIS BACK
 
     # Header metadata rows (Party Name, PO No, PO Date, etc.)
     header_rows = list(header_info.items())  # list of (key, val) tuples
