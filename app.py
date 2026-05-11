@@ -879,7 +879,7 @@ if po_df is not None and master_df is not None:
                     issue.append("Product not in Master")
             
             
-            if party != "TataCliq":
+            if party not in ("TataCliq", "FOY"):
                 if abs(r["MRP_PO"] - r["MRP_MASTER"]) > 0.01:
                     issue.append("MRP Mismatch")
             if party != "Nykaa":
