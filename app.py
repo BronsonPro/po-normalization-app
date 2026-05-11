@@ -926,7 +926,7 @@ if po_df is not None and master_df is not None:
 # ========== TEMPORARY: This code now runs for BOTH cases (with and without mismatches) ==========
         st.session_state['validation_success'] = True
                 # SCOOTSY FIX #4: Proper merge for Scootsy
-        if party == "Scootsy":
+        if party in ("Scootsy", "FOY"):
             # Drop empty EAN from PO, then merge on Item Code
             if "EAN" in po.columns:
                 po = po.drop(columns=["EAN"])
