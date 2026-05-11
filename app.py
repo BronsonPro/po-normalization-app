@@ -879,7 +879,7 @@ if po_df is not None and master_df is not None:
                 if pd.isna(r.get("EAN_MASTER")) or r.get("EAN_MASTER") == "" or r.get("EAN_MASTER") == 0:
                     issue.append("Product not in Master")
             elif party == "FOY":
-                if pd.isna(r.get("EAN_MASTER")) or r.get("EAN_MASTER") == "" or r.get("EAN_MASTER") == 0:
+                if pd.isna(r.get("Base Rate_MASTER")) or r.get("Base Rate_MASTER") == 0:
                     issue.append("Product not in Master")
             else:
                 if pd.isna(r.get("MRP_MASTER")) or r.get("MRP_MASTER") == 0:
