@@ -725,6 +725,16 @@ if po_df is not None and master_df is not None:
                     if is_master and "hsn code" in cl:
                         rename[c] = "HSN Code"
 
+                if party == "FOY":
+                    if is_master and "sku code" in cl:
+                        rename[c] = "Item Code"          # join key, same as Scootsy
+                    if is_master and "taxable amt" in cl:
+                        rename[c] = "Base Rate"
+                    if is_master and "gst" in cl:
+                        rename[c] = "GST %"
+                    if is_master and "hsn code" in cl:
+                        rename[c] = "HSN Code"
+
             df = df.rename(columns=rename)
             df = df.loc[:, ~df.columns.duplicated()]
             return df
@@ -775,6 +785,9 @@ if po_df is not None and master_df is not None:
         elif party == "Scootsy":
             po_req = ["Item Code", "MRP", "Base Rate", "GST %"]
             master_req = ["EAN", "Item Code", "Product Name"]
+        elif party == "FOY":
+            po_req = ["Item Code", "MRP", "Base Rate", "GST %"]
+            master_req = ["EAN", "Item Code", "Product Name", "HSN Code"]
         else:
             po_req = ["EAN", "MRP", "Base Rate", "GST %"]
             master_req = ["EAN", "MRP", "Base Rate", "GST %", "Product Name", "HSN Code"]
@@ -791,7 +804,7 @@ if po_df is not None and master_df is not None:
                 st.stop()
 
         # Validate numeric columns
-        if party == "Scootsy":
+        if party in ("Scootsy", "FOY"):
             po["Item Code"] = pd.to_numeric(po["Item Code"], errors="coerce")
             po = po.dropna(subset=["Item Code"])
             po["Item Code"] = po["Item Code"].astype("int64")
