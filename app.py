@@ -906,6 +906,8 @@ if po_df is not None and master_df is not None:
                 report = mismatch[["EAN", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
             elif party == "Scootsy":
                 report = mismatch[["Item Code", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
+            elif party == "FOY":
+                report = mismatch[["Item Code", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
             else:
                 report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
 
