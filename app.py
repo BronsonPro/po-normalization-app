@@ -494,7 +494,7 @@ def read_normalized_po_table(excel_path):
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
     # SCOOTSY FIX #1: Skip EAN validation for Scootsy (they use Item Code)
-    if party == "Scootsy":
+    if party in ("Scootsy", "FOY"):
         # For Scootsy, keep all rows - don't filter by quantity or numeric columns
         # Values will be populated from master file later
         pass
