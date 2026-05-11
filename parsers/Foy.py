@@ -1,6 +1,6 @@
-import re
+import pdfplumber
 import pandas as pd
-from pypdf import PdfReader
+import re
 
 
 def convert_pdf_to_excel(pdf_path: str, output_path: str) -> None:
