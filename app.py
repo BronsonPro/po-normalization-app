@@ -946,11 +946,6 @@ if po_df is not None and master_df is not None:
                 po = po.drop(columns=["EAN"])
             
             upd = po.merge(master[["Item Code", "EAN", "Product Name"]], on="Item Code", how="left")
-            st.write(f"upd rows: {len(upd)}, EAN populated: {upd['EAN'].notna().sum()}, sample: {upd[['Item Code','EAN']].head(3).to_dict()}")
-            st.write(f"table_header_row: {table_header_row}")
-            st.write(f"start_row: {start_row}")
-            st.write(f"final_raw shape: {final_raw.shape}")
-            st.write(f"final_raw header row: {final_raw.iloc[table_header_row].tolist()}")
         else:
             # All other parties: Standard EAN merge
             upd = po.merge(
