@@ -86,8 +86,12 @@ def _extract_all(pdf_path: str):
     )
     if ship_match:
         addr = re.sub(r'\s+', ' ', ship_match.group(1)).strip()
-        header_info["Shipping Address"] = addr
-
+        pin_match = re.search(r'\d{6}', addr)
+        if pin_match:
+            header_info["Shipping Address"] = pin_match.group(0)
+        else:
+            header_info["Shipping Address"] = addr
+        
     # GSTIN of FOY (second occurrence = FOY's GSTIN)
     gstin_matches = re.findall(r'GSTIN\s*:(\S+)', full_text)
     if len(gstin_matches) >= 2:
