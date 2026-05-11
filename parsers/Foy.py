@@ -13,10 +13,8 @@ def convert_pdf_to_excel(pdf_path: str, output_path: str) -> None:
     if not items:
         raise ValueError("No line items could be extracted from the FOY PO PDF.")
 
-    # Build item DataFrame and insert empty EAN column
-    # so read_normalized_po_table finds the header row
+    # Build item DataFrame
     df_items = pd.DataFrame(items)
-    df_items.insert(2, "EAN", "")
 
     # Header metadata rows (Party Name, PO No, PO Date, etc.)
     header_rows = list(header_info.items())  # list of (key, val) tuples
@@ -89,10 +87,10 @@ def _extract_all(pdf_path: str):
         addr = re.sub(r'\s+', ' ', ship_match.group(1)).strip()
         header_info["Shipping Address"] = addr
 
-    # GSTIN of FOY
+    # GSTIN of FOY (second occurrence = FOY's GSTIN)
     gstin_matches = re.findall(r'GSTIN\s*:(\S+)', full_text)
     if len(gstin_matches) >= 2:
-        header_info["GST No"] = gstin_matches[1].strip()  # second = FOY's GSTIN
+        header_info["GST No"] = gstin_matches[1].strip()
     elif gstin_matches:
         header_info["GST No"] = gstin_matches[0].strip()
 
@@ -131,6 +129,18 @@ def _extract_all(pdf_path: str):
         name = re.sub(r'\s*Colour:.*', '', name, flags=re.DOTALL).strip()
         name = re.sub(r'\s*Size:.*',   '', name, flags=re.DOTALL).strip()
         name = re.sub(r'\s*Brand:.*',  '', name, flags=re.DOTALL).strip()
+        # Fix mid-word line breaks (e.g. "Bronson Pr ofessional" → "Bronson Professional")
+        name = re.sub(r'(?<=[a-zA-Z]) (?=[a-z])', '', name)
+
+        cgst_rate = float(m.group(9))
+        sgst_rate = float(m.group(11))
+        igst_rate = float(m.group(13))
+
+        # GST %: CGST+SGST if no IGST, else IGST
+        if igst_rate > 0:
+            gst_pct = igst_rate
+        else:
+            gst_pct = cgst_rate + sgst_rate
 
         items.append({
             'Sr No':         int(m.group(1)),
@@ -141,13 +151,14 @@ def _extract_all(pdf_path: str):
             'Base Rate':     float(m.group(6)),
             'Discount':      float(m.group(7)),
             'Taxable Value': float(m.group(8)),
-            'CGST Rate':     float(m.group(9)),
+            'CGST Rate':     cgst_rate,
             'CGST Amt':      float(m.group(10)),
-            'SGST Rate':     float(m.group(11)),
+            'SGST Rate':     sgst_rate,
             'SGST Amt':      float(m.group(12)),
-            'IGST Rate':     float(m.group(13)),
+            'IGST Rate':     igst_rate,
             'IGST Amt':      float(m.group(14)),
             'Total':         float(m.group(15)),
+            'GST %':         gst_pct,
         })
 
     # ── Summary ────────────────────────────────────────────────────────
