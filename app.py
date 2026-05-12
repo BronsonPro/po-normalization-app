@@ -1079,10 +1079,6 @@ if po_df is not None and master_df is not None:
                             shipping_pin = pin_match[0]
                 
                 if party_name_sheet and shipping_pin:
-                    st.write(f"party_name_sheet: {party_name_sheet}")
-                    st.write(f"shipping_pin: {shipping_pin}")
-                    st.write(f"party_code_master names: {party_code_master['Party Name'].tolist()}")
-                    st.write(f"party_code_master pins: {party_code_master['Pincode'].tolist()}")
                     party_name_clean = re.sub(r'[^a-z0-9 ]', '', party_name_sheet.lower())
                     party_code_master["_clean_name"] = party_code_master["Party Name"].apply(
                         lambda x: re.sub(r'[^a-z0-9 ]', '', str(x).lower())
