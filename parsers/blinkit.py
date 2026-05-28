@@ -101,14 +101,34 @@ def extract_line_items_and_text_totals(pdf_path):
                     upc = r[3].replace("\n", "") if r[3] else ""  # This is EAN
                     product_name = r[4].replace("\n", " ") if r[4] else ""
                     basic_cost = r[5] if r[5] else ""
-                    igst_rate = r[6].replace("\n", "") if r[6] else ""
+                    cgst_rate = ""
+                    sgst_rate = ""
+                    igst_rate = ""
+                    
+                    for idx, h in enumerate(header if header else []):
+                        hl = h.lower().replace("\n", "")
+                        if "igst" in hl and idx < len(r):
+                            igst_rate = r[idx].replace("\n", "") if r[idx] else ""
+                        elif "cgst" in hl and idx < len(r):
+                            cgst_rate = r[idx].replace("\n", "") if r[idx] else ""
+                        elif "sgst" in hl and idx < len(r):
+                            sgst_rate = r[idx].replace("\n", "") if r[idx] else ""
                     landing_rate = r[10].replace("\n", "") if r[10] else ""
                     qty = r[11] if r[11] else ""
                     mrp = r[12] if r[12] else ""
                     total = r[14] if len(r) > 14 and r[14] else ""
                     
                     # Calculate GST % from IGST
-                    gst_pct = igst_rate
+                    try:
+                        cgst = float(cgst_rate or 0)
+                        sgst = float(sgst_rate or 0)
+                        igst = float(igst_rate or 0)
+                        if igst > 0:
+                            gst_pct = igst
+                        else:
+                            gst_pct = cgst + sgst
+                    except:
+                        gst_pct = ""
                     
                     out = {
                         "EAN": upc,
