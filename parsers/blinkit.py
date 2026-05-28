@@ -101,9 +101,16 @@ def extract_line_items_and_text_totals(pdf_path):
                     upc = r[3].replace("\n", "") if r[3] else ""  # This is EAN
                     product_name = r[4].replace("\n", " ") if r[4] else ""
                     basic_cost = r[5] if r[5] else ""
+                    
                     cgst_rate = ""
                     sgst_rate = ""
                     igst_rate = ""
+                    
+                    def col(name):
+                        for idx, h in enumerate(header if header else []):
+                            if name in h.lower().replace("\n", "") and idx < len(r):
+                                return r[idx].replace("\n", "") if r[idx] else ""
+                        return ""
                     
                     for idx, h in enumerate(header if header else []):
                         hl = h.lower().replace("\n", "")
@@ -113,11 +120,22 @@ def extract_line_items_and_text_totals(pdf_path):
                             cgst_rate = r[idx].replace("\n", "") if r[idx] else ""
                         elif "sgst" in hl and idx < len(r):
                             sgst_rate = r[idx].replace("\n", "") if r[idx] else ""
-                    landing_rate = r[10].replace("\n", "") if r[10] else ""
-                    qty = r[11] if r[11] else ""
-                    mrp = r[12] if r[12] else ""
-                    total = r[14] if len(r) > 14 and r[14] else ""
                     
+                    try:
+                        cgst = float(cgst_rate or 0)
+                        sgst = float(sgst_rate or 0)
+                        igst = float(igst_rate or 0)
+                        if igst > 0:
+                            gst_pct = igst
+                        else:
+                            gst_pct = cgst + sgst
+                    except:
+                        gst_pct = ""
+                    
+                    landing_rate = col("landing")
+                    qty = col("qty")
+                    mrp = col("mrp")
+                    total = col("total")                    
                     # Calculate GST % from IGST
                     try:
                         cgst = float(cgst_rate or 0)
