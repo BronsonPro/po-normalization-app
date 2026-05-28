@@ -54,6 +54,15 @@ def extract_po_header(pdf_path):
     return data
 
 
+# ------------------ COLUMN HELPER ------------------
+
+def col_lookup(name, header, r):
+    for idx, h in enumerate(header if header else []):
+        if name in h.lower().replace("\n", "") and idx < len(r):
+            return r[idx].replace("\n", "") if r[idx] else ""
+    return ""
+
+
 # ------------------ LINE ITEMS EXTRACTION ------------------
 
 def extract_line_items_and_text_totals(pdf_path):
@@ -74,12 +83,15 @@ def extract_line_items_and_text_totals(pdf_path):
             if not table:
                 continue
 
+            header = None
+
             for row in table:
                 r = [(c.strip() if c else "") for c in row]
                 
                 # Skip header rows
                 row_text = " ".join(r).lower()
                 if "item code" in row_text or "#" == r[0]:
+                    header = r
                     continue
                 
                 # Check if this is a total row
@@ -92,26 +104,17 @@ def extract_line_items_and_text_totals(pdf_path):
                 # Extract product rows (rows that start with a number)
                 if r[0] and r[0].strip().isdigit():
                     
-                    # BlinkIt columns: #, Item Code, HSN Code, Product UPC, Product Description, 
-                    # Basic Cost Price, IGST %, CESS %, ADD T. CESS, Tax Amt, Landing Rate, 
-                    # Qty, MRP, Margin %, Total Amt
-                    
                     item_code = r[1].replace("\n", "") if r[1] else ""
                     hsn = r[2].replace("\n", "") if r[2] else ""
                     upc = r[3].replace("\n", "") if r[3] else ""  # This is EAN
                     product_name = r[4].replace("\n", " ") if r[4] else ""
                     basic_cost = r[5] if r[5] else ""
-                    
+
+                    # ---- GST: handle both CGST+SGST and IGST ----
                     cgst_rate = ""
                     sgst_rate = ""
                     igst_rate = ""
-                    
-                    def col(name):
-                        for idx, h in enumerate(header if header else []):
-                            if name in h.lower().replace("\n", "") and idx < len(r):
-                                return r[idx].replace("\n", "") if r[idx] else ""
-                        return ""
-                    
+
                     for idx, h in enumerate(header if header else []):
                         hl = h.lower().replace("\n", "")
                         if "igst" in hl and idx < len(r):
@@ -120,7 +123,7 @@ def extract_line_items_and_text_totals(pdf_path):
                             cgst_rate = r[idx].replace("\n", "") if r[idx] else ""
                         elif "sgst" in hl and idx < len(r):
                             sgst_rate = r[idx].replace("\n", "") if r[idx] else ""
-                    
+
                     try:
                         cgst = float(cgst_rate or 0)
                         sgst = float(sgst_rate or 0)
@@ -131,22 +134,13 @@ def extract_line_items_and_text_totals(pdf_path):
                             gst_pct = cgst + sgst
                     except:
                         gst_pct = ""
-                    
-                    landing_rate = col("landing")
-                    qty = col("qty")
-                    mrp = col("mrp")
-                    total = col("total")                    
-                    # Calculate GST % from IGST
-                    try:
-                        cgst = float(cgst_rate or 0)
-                        sgst = float(sgst_rate or 0)
-                        igst = float(igst_rate or 0)
-                        if igst > 0:
-                            gst_pct = igst
-                        else:
-                            gst_pct = cgst + sgst
-                    except:
-                        gst_pct = ""
+                    # ---- END GST ----
+
+                    # ---- Column lookup by header name ----
+                    landing_rate = col_lookup("landing", header, r)
+                    qty = col_lookup("qty", header, r)
+                    mrp = col_lookup("mrp", header, r)
+                    total = col_lookup("total", header, r)
                     
                     out = {
                         "EAN": upc,
