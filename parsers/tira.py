@@ -136,6 +136,14 @@ def convert_pdf_to_excel(pdf_path, output_excel_path):
                                 return r[i]
                     return ""
 
+                def col_hsn():
+                    for i, h in enumerate(header):
+                        if "hsn" in h.lower():
+                            if i < len(r):
+                                nums = re.findall(r'\d+', r[i])
+                                return nums[-1] if nums else ""
+                    return ""
+
                 ean_val = num(col("ean"))
                 if not ean_val:
                     continue
@@ -177,7 +185,7 @@ def convert_pdf_to_excel(pdf_path, output_excel_path):
                 items.append({
                     "EAN": ean_val,
                     "Product Name": full_name,
-                    "HSN Code": col("hsn"),
+                    "HSN Code": col_hsn(),
                     "Quantity": qty,
                     "MRP": mrp,
                     "Base Rate": base,
