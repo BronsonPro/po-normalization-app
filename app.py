@@ -204,8 +204,7 @@ PO Automation"""
 # ================== DJANGO UPLOAD ==================
 def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
     """Upload PO data to Django API"""
-    st.write(f"po_date: {st.session_state.get('po_date', 'NOT SET')}")
-    st.write(f"po_expiry_date: {st.session_state.get('po_expiry_date', 'NOT SET')}")
+    
     from datetime import datetime
     
     # Handle po_date
