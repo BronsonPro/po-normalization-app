@@ -70,6 +70,8 @@ def extract_line_items_and_text_totals(pdf_path):
     total_text_rows = []
 
     with pdfplumber.open(pdf_path) as pdf:
+        header = None
+
         for page in pdf.pages:
             
             table = page.extract_table({
@@ -83,7 +85,6 @@ def extract_line_items_and_text_totals(pdf_path):
             if not table:
                 continue
 
-            header = None
 
             for row in table:
                 r = [(c.strip() if c else "") for c in row]
