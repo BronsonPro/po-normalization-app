@@ -1323,6 +1323,8 @@ if po_df is not None and master_df is not None:
             # Extract PO Date and Expiry Date
         po_date = ""
         po_expiry_date = ""
+        st.write(f"final_raw header rows: {final_raw.iloc[:table_header_row].values.tolist()}")
+
         for i in range(table_header_row):
             #row_vals = final_raw.iloc[i].astype(str).str.lower().tolist()
             row_vals = " ".join([str(x) for x in final_raw.iloc[i].fillna("").tolist()]).lower()
