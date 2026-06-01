@@ -20,10 +20,10 @@ def extract_po_header(pdf_path):
     po_no = find(r"P\.O\.\s*Number\s*:?\s*([0-9]+)")
     
     # Extract PO Date
-    po_date = find(r"Date\s*:?\s*([A-Za-z]+\.\s*\d{1,2},\s*\d{4})")
+    po_date = find(r"Date\s*:?\s*([A-Za-z]+\.?\s*\d{1,2},\s*\d{4})")
     
     # Extract PO Expiry Date
-    po_expiry = find(r"PO expiry date\s*:?\s*([A-Za-z]+\.\s*\d{1,2},\s*\d{4})")
+    po_expiry = find(r"PO expiry date\s*:?\s*([A-Za-z]+\.?\s*\d{1,2},\s*\d{4})")
     
     # Extract GST Number (there are two - we want the "Delivered To" one which is 30...)
     gst_matches = re.findall(r"GST No\.\s*:\s*([A-Z0-9]+)", text)
