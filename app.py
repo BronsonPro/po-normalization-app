@@ -654,6 +654,10 @@ if po_df is not None and master_df is not None:
                     if is_master and any(k in cl for k in ["cp", "excl", "base"]):
                         rename[c] = "Base Rate"
 
+                if party == "Nykaa":
+                    if is_master and "taxable rate" in cl:
+                        rename[c] = "Base Rate"
+
                 if party == "TiraBeauty":
                     if not is_master and any(k in cl for k in ["base", "cost"]):
                         rename[c] = "Base Rate"
@@ -762,8 +766,8 @@ if po_df is not None and master_df is not None:
 
         # Define required columns per party
         if party == "Nykaa":
-            po_req = ["EAN", "MRP", "GST %"]
-            master_req = ["EAN", "MRP", "GST %", "Product Name", "HSN Code"]
+            po_req = ["EAN", "MRP", "Base Rate", "GST %"]
+            master_req = ["EAN", "MRP", "Base Rate", "GST %", "Product Name", "HSN Code"]
         elif party == "TataCliq":
             po_req = ["EAN", "Base Rate", "GST %"]
             master_req = ["EAN", "MRP", "Base Rate", "GST %", "Product Name", "HSN Code"]
@@ -892,9 +896,9 @@ if po_df is not None and master_df is not None:
             if party not in ("TataCliq", "FOY"):
                 if abs(r["MRP_PO"] - r["MRP_MASTER"]) > 0.01:
                     issue.append("MRP Mismatch")
-            if party != "Nykaa":
-                if abs(r["Base Rate_PO"] - r["Base Rate_MASTER"]) > 0.01:
-                    issue.append("Base Rate Mismatch")
+            #if party != "Nykaa":
+            if abs(r["Base Rate_PO"] - r["Base Rate_MASTER"]) > 0.01:
+                issue.append("Base Rate Mismatch")
             if abs(r["GST %_PO"] - r["GST %_MASTER"]) > 0.01:
                 issue.append("GST % Mismatch")
 
@@ -911,8 +915,7 @@ if po_df is not None and master_df is not None:
 
         if not mismatch.empty:
             if party == "Nykaa":
-                #mismatch["EAN"] = mismatch["EAN"].astype(str).str.replace(".0", "", regex=False)
-                report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
+                report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
             elif party == "TataCliq":
                 report = mismatch[["EAN", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
             elif party == "Scootsy":
@@ -1324,7 +1327,7 @@ if po_df is not None and master_df is not None:
             # Extract PO Date and Expiry Date
         po_date = ""
         po_expiry_date = ""
-        st.write(f"final_raw header rows: {final_raw.iloc[:table_header_row].values.tolist()}")
+        
 
         for i in range(table_header_row):
             #row_vals = final_raw.iloc[i].astype(str).str.lower().tolist()
