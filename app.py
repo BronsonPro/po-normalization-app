@@ -831,8 +831,8 @@ if po_df is not None and master_df is not None:
         else:
             if party == "Nykaa":
                 # Nykaa can have alphanumeric EANs - keep as string
-                po["EAN"] = po["EAN"].astype(str).str.strip()
-                master["EAN"] = master["EAN"].astype(str).str.strip()
+                po["EAN"] = po["EAN"].astype(str).str.strip().str.replace(".0", "", regex=False)
+                master["EAN"] = master["EAN"].astype(str).str.strip().str.replace(".0", "", regex=False)
                 po = po[po["EAN"].str.len() > 0]
                 master = master[master["EAN"].str.len() > 0]
 
