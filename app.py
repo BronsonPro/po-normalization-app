@@ -911,7 +911,7 @@ if po_df is not None and master_df is not None:
 
         if not mismatch.empty:
             if party == "Nykaa":
-                mismatch["EAN"] = mismatch["EAN"].astype(str).str.replace(".0", "", regex=False)
+                #mismatch["EAN"] = mismatch["EAN"].astype(str).str.replace(".0", "", regex=False)
                 report = mismatch[["EAN", "MRP_PO", "MRP_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
             elif party == "TataCliq":
                 report = mismatch[["EAN", "Base Rate_PO", "Base Rate_MASTER", "GST %_PO", "GST %_MASTER", "HSN Code_PO", "HSN Code_MASTER", "Reason"]]
