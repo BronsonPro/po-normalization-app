@@ -6,7 +6,6 @@ import re
 # ------------------ HEADER EXTRACTION ------------------
 
 def extract_po_header(pdf_path):
-
     party_name = "Sliksync"
     po_no = ""
     po_date = ""
@@ -16,53 +15,34 @@ def extract_po_header(pdf_path):
 
     with pdfplumber.open(pdf_path) as pdf:
         text = pdf.pages[0].extract_text() or ""
+        tables = pdf.pages[0].extract_tables()
 
-    lines = text.split("\n")
+    # PO No
+    m = re.search(r'PO#\s*(SLIKPO#\d+)', text)
+    if m:
+        po_no = m.group(1).strip()
 
-    # Po number: SKPO/25-26/393
-    for line in lines:
-        if "Po number:" in line or "PO number:" in line:
-            m = re.search(r'Po number:\s*([A-Z0-9\-/]+)', line, re.IGNORECASE)
-            if m:
-                po_no = m.group(1).strip()
+    # Order Date, PO Expiry, Shipping Address from tables
+    for table in tables:
+        for row in table:
+            r = [str(c).strip() if c else "" for c in row]
+            for i, cell in enumerate(r):
+                if "ORDER" in cell and "DATE" in cell and i + 1 < len(r):
+                    po_date = r[i + 1].replace("\n", " ").strip()
+                if "PO Expiry" in cell and i + 1 < len(r):
+                    po_expiry = r[i + 1].strip()
+                if "SHIPPED TO" in cell and "ADDRESS" in cell and i + 1 < len(r):
+                    addr = r[i + 1].replace("\n", " ").strip()
+                    pin_match = re.search(r'\d{6}', addr)
+                    if pin_match:
+                        shipping_address = pin_match.group(0)
 
-        # Date : 12-Feb-2026
-        if "Date :" in line and not "Deliver" in line:
-            m = re.search(r'Date\s*:\s*([\d\-A-Za-z]+)', line)
-            if m:
-                date_str = m.group(1).strip()
-                # Convert "12-Feb-2026" to "12-02-2026"
-                try:
-                    from datetime import datetime
-                    dt = datetime.strptime(date_str, "%d-%b-%Y")
-                    po_date = dt.strftime("%d-%m-%Y")
-                except:
-                    po_date = date_str
-
-    # Shipping Address - extract from "Deliver To" section
-    deliver_section = ""
-    in_deliver = False
-    for line in lines:
-        if "Deliver To" in line:
-            in_deliver = True
-        elif in_deliver and "GSTIN" in line:
-            deliver_section += line
+    # Slikk GSTIN (Karnataka = state code 29)
+    gstin_matches = re.findall(r'\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})\b', text)
+    for g in gstin_matches:
+        if g.startswith("29"):
+            gst_no = g
             break
-        elif in_deliver:
-            deliver_section += line + " "
-    
-    # Extract pincode from deliver section (6-digit number)
-    pin_match = re.search(r'\b(\d{6})\b', deliver_section)
-    if pin_match:
-        shipping_address = pin_match.group(1)
-
-    # GST from deliver section (GSTIN in deliver to section)
-    gst_match = re.search(r'GSTIN\s*:\s*([A-Z0-9]{15})', deliver_section)
-    if gst_match:
-        gst_no = gst_match.group(1)
-
-    # PO Expiry - Slikk doesn't have expiry in PO, leave blank
-    po_expiry = ""
 
     return {
         "Party Name": party_name,
@@ -77,203 +57,179 @@ def extract_po_header(pdf_path):
 # ------------------ LINE ITEMS EXTRACTION ------------------
 
 def extract_line_items(pdf_path):
+    # Pass 1: collect all table rows and pending continuation rows per page
+    # Pass 2: collect text-only rows (missed by table parser)
+    # Then merge by S.No
+
+    table_items = {}   # sno -> item dict
+    text_items = {}    # sno -> partial item dict (data only, no name/sku)
+    continuation = {}  # sno -> {name, sku} from continuation rows
 
     with pdfplumber.open(pdf_path) as pdf:
-        # Products are on page 2
-        if len(pdf.pages) < 2:
-            return pd.DataFrame()
-        
-        # Try table extraction first
-        tables = pdf.pages[1].extract_tables()
-        
-        if not tables:
-            return pd.DataFrame()
-        
-        # Find the main product table (has Description, SKU ID, HSN Code columns)
-        product_table = None
-        for table in tables:
-            if table and len(table) > 1:
-                # Check if first row has key headers
-                header_row = [str(cell).lower() if cell else "" for cell in table[0]]
-                if "description" in " ".join(header_row) and "sku" in " ".join(header_row):
-                    product_table = table
-                    break
-        
-        if not product_table:
-            return pd.DataFrame()
-        
-        # Extract products
-        items = []
-        
-        # Find column indices from header
-        header = product_table[0]
-        desc_idx = None
-        sku_idx = None
-        hsn_idx = None
-        qty_idx = None
-        mrp_idx = None
-        purchase_idx = None
-        gst_rate_idx = None
-        total_purchase_idx = None
-        
-        for i, cell in enumerate(header):
-            cell_str = str(cell).lower() if cell else ""
-            if "description" in cell_str:
-                desc_idx = i
-            elif "sku" in cell_str:
-                sku_idx = i
-            elif "hsn" in cell_str:
-                hsn_idx = i
-            elif "allocate" in cell_str or ("qty" in cell_str and "allocate" not in cell_str):
-                # Find "Allocate qty" column
-                if "allocate" in cell_str:
-                    qty_idx = i
-            elif "mrp" == cell_str:
-                mrp_idx = i
-            elif "purchase price/pu" in cell_str or "purchase" in cell_str and "price" in cell_str and "total" not in cell_str:
-                purchase_idx = i
-            elif "gst rate on purchase" in cell_str:
-                gst_rate_idx = i
-            elif "total purchase price with gst" in cell_str:
-                total_purchase_idx = i
-        
-        # If qty_idx not found, look for column after HSN
-        if qty_idx is None and hsn_idx is not None:
-            qty_idx = hsn_idx + 1
-        
-        # Process data rows
-        for row_idx, row in enumerate(product_table[1:], 1):
-            if not row or len(row) < 5:
-                continue
-            
-            try:
-                # Extract values
-                description = str(row[desc_idx]).strip() if desc_idx is not None and row[desc_idx] else ""
-                
-                # SKU ID - extract digits and concatenate (PDF may have text mixed in)
-                sku_id = ""
-                if sku_idx is not None and row[sku_idx]:
-                    sku_str = str(row[sku_idx]).strip()
-                    # First try to find 13-14 digit number directly
-                    digits = re.findall(r'\d{13,14}', sku_str)
-                    if digits:
-                        sku_id = digits[0]
-                    else:
-                        # Extract all digits and concatenate
-                        all_digits = ''.join(re.findall(r'\d', sku_str))
-                        if len(all_digits) >= 13:
-                            # Prefer 13 digits (standard EAN-13)
-                            # Only use 14 if the first 13 don't match master
-                            sku_id = all_digits[:13]
-                
-                # HSN Code - extract only digits (8 digits)
-                hsn = ""
-                if hsn_idx is not None and row[hsn_idx]:
-                    hsn_str = str(row[hsn_idx]).strip()
-                    # Extract 8-digit HSN code
-                    hsn_match = re.search(r'\b(\d{8})\b', hsn_str)
-                    if hsn_match:
-                        hsn = hsn_match.group(1)
-                    else:
-                        # Fallback: take any 6-8 digit number
-                        digits = re.findall(r'\d{6,8}', hsn_str)
-                        if digits:
-                            hsn = digits[0]
-                
-                # Qty
-                qty = 0
-                if qty_idx is not None and row[qty_idx]:
-                    try:
-                        qty = int(float(str(row[qty_idx]).strip()))
-                    except:
-                        pass
-                
-                if qty <= 0 or not sku_id or len(sku_id) < 13:
+        prev_sno = 0  # track last seen S.No for continuation rows
+
+        for page_num, page in enumerate(pdf.pages):
+            tables = page.extract_tables()
+
+            for table in tables:
+                if not table:
                     continue
-                
-                # MRP
-                mrp = 0.0
-                if mrp_idx is not None and row[mrp_idx]:
+                header_row = [str(c).replace("\n", " ").strip().lower() if c else "" for c in table[0]]
+                if "s.no" not in " ".join(header_row) or "sku" not in " ".join(header_row):
+                    continue
+
+                for row in table[1:]:
+                    r = [str(c).replace("\n", "").strip() if c else "" for c in row]
+
+                    sno_raw        = r[0]
+                    name           = r[1]
+                    sku_raw        = r[2]
+                    hsn            = r[3]
+                    mrp            = r[4]
+                    qty_str        = r[6]
+                    purchase_price = r[7]
+                    item_value     = r[8]
+                    total_tax      = r[9]
+                    total_amt      = r[10] if len(r) > 10 else ""
+
+                    sku_digits = re.sub(r'\D', '', sku_raw)
+                    sku = sku_digits[:13] if len(sku_digits) >= 13 else sku_digits
+
+                    sno_int = int(sno_raw) if sno_raw.isdigit() else 0
+
+                    # Continuation row: has name/sku but no data
+                    if not hsn and not qty_str:
+                        if sno_int > 0:
+                            prev_sno = sno_int
+                        # Store as continuation for the next missing sno
+                        target_sno = sno_int if sno_int > 0 else prev_sno + 1
+                        continuation[target_sno] = {
+                            "name": name if name else "",
+                            "sku": sku if sku else "",
+                        }
+                        if sno_int == 0:
+                            prev_sno = target_sno
+                        continue
+
+                    if sno_int > 0:
+                        prev_sno = sno_int
+
                     try:
-                        mrp = float(str(row[mrp_idx]).replace(",", "").strip())
+                        qty = int(float(qty_str)) if qty_str else 0
                     except:
-                        pass
-                
-                # Purchase price per unit (Base Rate) - column 13
-                base_rate = 0.0
-                if len(row) > 13 and row[13]:
+                        qty = 0
+
+                    if qty <= 0:
+                        continue
+
                     try:
-                        base_rate = float(str(row[13]).replace(",", "").strip())
+                        gst_pct = round((float(total_tax) / float(item_value)) * 100) if item_value and float(item_value) > 0 else 18
                     except:
-                        pass
-                
-                # GST Rate - extract from column 15
-                gst_pct = 18.0
-                if len(row) > 15 and row[15]:
-                    gst_str = str(row[15]).strip()
-                    m = re.search(r'(\d+)', gst_str)
-                    if m:
-                        gst_pct = float(m.group(1))
-                
-                # Total purchase with GST - column 17
-                total = 0.0
-                if len(row) > 17 and row[17]:
+                        gst_pct = 18
+
                     try:
-                        total = float(str(row[17]).replace(",", "").replace(" ", "").strip())
+                        mrp_val   = float(mrp) if mrp else 0
+                        base_val  = float(purchase_price) if purchase_price else 0
+                        total_val = float(total_amt) if total_amt else 0
                     except:
-                        pass
-                
-                items.append({
-                    "Sr #": len(items) + 1,
-                    "EAN": sku_id,
-                    "Product Name": description,
-                    "HSN Code": hsn,
-                    "Quantity": qty,
-                    "MRP": mrp,
-                    "Base Rate": base_rate,
-                    "GST %": gst_pct,
-                    "Total": total,
-                })
-            
-            except Exception as e:
-                print(f"Error parsing row {row_idx}: {e}")
-                continue
-        
-        return pd.DataFrame(items)
+                        mrp_val = base_val = total_val = 0
+
+                    table_items[sno_int] = {
+                        "EAN": sku,
+                        "Product Name": name,
+                        "HSN Code": hsn,
+                        "Quantity": qty,
+                        "MRP": mrp_val,
+                        "Base Rate": base_val,
+                        "GST %": gst_pct,
+                        "Total": total_val,
+                    }
+
+            # Fallback: extract rows from page text that the table missed
+            text = page.extract_text() or ""
+            text_rows = re.findall(
+                r'^(\d+)\s+(\d{8})\s+([\d.]+)\s+([\d.]+)\s+(\d+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)',
+                text, re.MULTILINE
+            )
+            for tr in text_rows:
+                sno_t = int(tr[0])
+                if sno_t in table_items:
+                    continue
+                hsn_t      = tr[1]
+                mrp_t      = float(tr[2])
+                qty_t      = int(tr[4])
+                base_t     = float(tr[5])
+                item_val_t = float(tr[6])
+                tax_t      = float(tr[7])
+                total_t    = float(tr[8])
+                try:
+                    gst_t = round((tax_t / item_val_t) * 100) if item_val_t > 0 else 18
+                except:
+                    gst_t = 18
+
+                text_items[sno_t] = {
+                    "HSN Code": hsn_t,
+                    "Quantity": qty_t,
+                    "MRP": mrp_t,
+                    "Base Rate": base_t,
+                    "GST %": gst_t,
+                    "Total": total_t,
+                }
+
+    # Merge text_items with continuation data
+    for sno, data in text_items.items():
+        cont = continuation.get(sno, {})
+        table_items[sno] = {
+            "EAN": cont.get("sku", ""),
+            "Product Name": cont.get("name", ""),
+            **data,
+        }
+
+    # Also apply continuation to table_items missing name/sku
+    for sno, cont in continuation.items():
+        if sno in table_items:
+            if not table_items[sno].get("EAN") and cont.get("sku"):
+                table_items[sno]["EAN"] = cont["sku"]
+            if not table_items[sno].get("Product Name") and cont.get("name"):
+                table_items[sno]["Product Name"] = cont["name"]
+
+    # Build sorted list
+    items = []
+    for sno in sorted(table_items.keys()):
+        item = table_items[sno]
+        item["Sr #"] = len(items) + 1
+        items.append(item)
+
+    return pd.DataFrame(items)
 
 
 # ------------------ SUMMARY EXTRACTION ------------------
 
 def extract_summary(pdf_path):
-
     with pdfplumber.open(pdf_path) as pdf:
-        text = pdf.pages[0].extract_text() or ""
+        tables = pdf.pages[0].extract_tables()
 
-    # Extract from summary table
-    # Total 46,562
-    # IGST 7,103
-    # Sub Total 39,459
-    
-    grand_total = 0.0
-    total_tax = 0.0
-    
-    for line in text.split("\n"):
-        if line.strip().startswith("Total") and not "Sub Total" in line:
-            m = re.search(r'Total\s+([\d,]+)', line)
-            if m:
-                grand_total = float(m.group(1).replace(",", ""))
-        
-        if "IGST" in line:
-            m = re.search(r'IGST\s+([\d,]+)', line)
-            if m:
-                total_tax = float(m.group(1).replace(",", ""))
-    
-    total_base = round(grand_total - total_tax, 2)
+    taxable_val = ""
+    tax_amt = ""
+    total_amt = ""
+
+    for table in tables:
+        for i, row in enumerate(table):
+            r = [str(c).strip() if c else "" for c in row]
+            # Header row: Taxable Value | Tax Amount | Total Amount
+            if "Taxable Value" in r and "Tax Amount" in r and "Total Amount" in r:
+                # Next row has values
+                if i + 1 < len(table):
+                    vals = [str(c).strip() if c else "" for c in table[i + 1]]
+                    taxable_val = vals[0].replace(" INR", "").replace(",", "").strip()
+                    tax_amt     = vals[1].replace(" INR", "").replace(",", "").strip()
+                    total_amt   = vals[2].replace(" INR", "").replace(",", "").strip()
+                break
 
     return {
-        "Total Base Value": f"{total_base:.2f}",
-        "Total Tax": f"{total_tax:.2f}",
-        "Grand Total": f"{grand_total:.2f}",
+        "Total Base Value": taxable_val,
+        "Total Tax": tax_amt,
+        "Grand Total": total_amt,
     }
 
 
@@ -289,48 +245,41 @@ def convert_pdf_to_excel(pdf_path, output_excel_path):
 
     summary_data = extract_summary(pdf_path)
 
-    # Write to Excel with proper formatting
     from openpyxl import Workbook
-    
+
     wb = Workbook()
     ws = wb.active
-    
+
     row_offset = 1
-    
-    # Header section
+
     for field, value in header_data.items():
         ws.cell(row=row_offset, column=1, value=field)
         ws.cell(row=row_offset, column=2, value=value)
         row_offset += 1
-    
+
     row_offset += 2
-    
-    # Products table
+
     headers = ["Sr #", "EAN", "Product Name", "HSN Code", "Quantity", "MRP", "Base Rate", "GST %", "Total"]
     for col, header in enumerate(headers, 1):
         ws.cell(row=row_offset, column=col, value=header)
     row_offset += 1
-    
-    # Products data
+
     for _, row in products.iterrows():
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=row_offset, column=col)
             value = row[header]
-            
-            # Format EAN and HSN as text
-            if header == "EAN" or header == "HSN Code":
+            if header in ("EAN", "HSN Code"):
                 cell.value = str(value)
                 cell.number_format = '@'
             else:
                 cell.value = value
         row_offset += 1
-    
+
     row_offset += 2
-    
-    # Summary section
+
     for field, value in summary_data.items():
         ws.cell(row=row_offset, column=1, value=field)
         ws.cell(row=row_offset, column=2, value=value)
         row_offset += 1
-    
+
     wb.save(output_excel_path)
