@@ -128,6 +128,54 @@ def extract_line_items(pdf_path):
         # Use table only to understand structure, extract from text
         return extract_line_items_from_text(pdf_path)
 
+def _reconstruct_ean_from_words(page, sku_code, x_min=140, x_max=207, top_window=25):
+    """Fallback EAN reconstruction for rows whose Product Name/EAN cell wraps
+    across a page break. In that situation pdfplumber's extract_text() can
+    merge the wrapped sub-lines into one garbled line, scrambling the EAN's
+    digit order. This works around it by reading pdfplumber's word-level
+    bounding boxes (which stay individually accurate even when line assembly
+    doesn't) for digit-only words in the Product Name/EAN column band, sorted
+    by true (top, x0) position - the genuine reading order."""
+    try:
+        words = page.extract_words()
+    except Exception:
+        return None
+
+    sku_words = [w for w in words if w['text'] == sku_code]
+    if not sku_words:
+        return None
+    top_center = sku_words[0]['top']
+
+    candidates = [
+        w for w in words
+        if x_min <= w['x0'] <= x_max
+        and abs(w['top'] - top_center) <= top_window
+        and w['text'].isdigit()
+    ]
+    if not candidates:
+        return None
+
+    groups = {}
+    for w in candidates:
+        groups.setdefault(round(w['top'], 1), []).append(w)
+
+    result = []
+    for t in sorted(groups.keys()):
+        group = sorted(groups[t], key=lambda w: w['x0'])
+        kept = []
+        for w in group:
+            if kept and w['x0'] < kept[-1]['x1'] - 0.5:
+                # Overlapping bbox - likely a duplicated glyph; keep the longer read
+                if len(w['text']) > len(kept[-1]['text']):
+                    kept[-1] = w
+            else:
+                kept.append(w)
+        result.extend(w['text'] for w in kept)
+
+    digits = "".join(result)
+    return digits if 13 <= len(digits) <= 14 else None
+
+
 def extract_line_items_from_text(pdf_path):
     """Extract using text with intelligent column detection"""
     items = []
@@ -135,9 +183,12 @@ def extract_line_items_from_text(pdf_path):
     
     with pdfplumber.open(pdf_path) as pdf:
         lines = []
-        for page in pdf.pages:
+        line_page_idx = []  # parallel array: which page (index into pdf.pages) each line came from
+        for p_idx, page in enumerate(pdf.pages):
             page_text = page.extract_text() or ""
-            lines.extend(page_text.split('\n'))
+            page_lines = page_text.split('\n')
+            lines.extend(page_lines)
+            line_page_idx.extend([p_idx] * len(page_lines))
         
         # Find header line - check both text and look for tax keywords
         header_line = None
@@ -193,6 +244,8 @@ def extract_line_items_from_text(pdf_path):
             is_cgst_sgst = True
             debug_info.append("Defaulting to CGST+SGST format")
         
+        reconstructed_eans = []
+        
         for idx, line in enumerate(lines):
             if 'BNPL' not in line:
                 continue
@@ -218,15 +271,76 @@ def extract_line_items_from_text(pdf_path):
                 # HSN is right after SKU
                 hsn = parts[sku_idx + 1] if sku_idx + 1 < len(parts) else ""
                 
-                # Find EAN - look for 8-digit or longer number
+                # Determine the numeric tail (Qty/MRP/Rate/Tax/Total) FIRST using fixed
+                # offsets from the end of the line. These fields are reliable even when
+                # the Product Name / EAN columns get scrambled by page-break text wrapping,
+                # so we use them to compute where the Style ID sits and bound the EAN
+                # search to stop before it - this stops the parser from ever mistaking
+                # the Style ID for the EAN.
+                if is_igst or (not is_cgst_sgst and len(parts) < sku_idx + 20):
+                    style_id_idx = len(parts) - 8
+                else:
+                    style_id_idx = len(parts) - 10
+                ean_search_end = max(sku_idx + 2, min(style_id_idx, len(parts)))
+                
+                # Find EAN - look for 8-digit or longer number, but only before the Style ID
                 # EAN might be split across 2 lines
                 ean = ""
                 ean_idx = -1
-                for i in range(sku_idx + 2, len(parts)):
+                for i in range(sku_idx + 2, ean_search_end):
                     if parts[i].isdigit() and len(parts[i]) >= 8:
                         ean = parts[i]
                         ean_idx = i
                         break
+                
+                # Fallback 1: the EAN's digits may have been scrambled into isolated
+                # fragments (happens when this row's Product Name/EAN cell wraps
+                # across a page break and pdfplumber's line assembly interleaves it
+                # with the row's data columns). Simply concatenating the stray digit
+                # tokens in "parts" order is NOT reliable here - testing showed it
+                # can reproduce the digits in the wrong order. Instead, reconstruct
+                # using each word's actual (top, x0) position on the page.
+                ean_reconstructed = False
+                if not ean:
+                    page_for_line = pdf.pages[line_page_idx[idx]]
+                    reconstructed = _reconstruct_ean_from_words(page_for_line, sku_code)
+                    if reconstructed:
+                        ean = reconstructed
+                        ean_idx = ean_search_end  # product name slice below just uses this as an end bound
+                        ean_reconstructed = True
+                        debug_info.append(f"Word-position reconstructed EAN: {ean}")
+                
+                # Fallback 2: the wrap may instead start on the PRECEDING line/page
+                # (e.g. the last item on a page whose Product Name/EAN text spills
+                # onto the following page, leaving only a short digit fragment on
+                # the SKU's own line). Look a few lines backward - stopping if we
+                # hit the previous item's SKU line - for an 8+ digit prefix, then
+                # complete it using a short fragment from the SKU's own line.
+                if not ean:
+                    prefix = ""
+                    for back in range(1, 6):
+                        back_idx = idx - back
+                        if back_idx < 0:
+                            break
+                        back_line = lines[back_idx].strip()
+                        if 'BNPL' in back_line:
+                            break  # ran into the previous item - stop
+                        back_parts = back_line.split()
+                        found_prefix = next((p for p in back_parts if p.isdigit() and len(p) >= 8), None)
+                        if found_prefix:
+                            prefix = found_prefix
+                            break
+                    if prefix:
+                        for i in range(sku_idx + 2, ean_search_end):
+                            p = parts[i]
+                            if p.isdigit() and 3 <= len(p) <= 6:
+                                candidate = prefix + p
+                                if 13 <= len(candidate) <= 14:
+                                    ean = candidate
+                                    ean_idx = i + 1
+                                    ean_reconstructed = True
+                                    debug_info.append(f"Backward-reconstructed EAN: {prefix} + {p} = {ean}")
+                                    break
                 
                 # If EAN found and it's less than 13 digits, check next line for continuation
                 if ean and len(ean) < 13 and idx + 1 < len(lines):
@@ -338,10 +452,23 @@ def extract_line_items_from_text(pdf_path):
                     "GST %": gst_pct,
                     "Total": total,
                 })
+                if ean_reconstructed:
+                    reconstructed_eans.append((sku_code, ean))
                 
             except (ValueError, IndexError) as e:
                 debug_info.append(f"ERROR parsing: {str(e)}")
                 continue
+    
+    # Flag any EANs that had to be reconstructed (row wrapped across a page
+    # break) so they get a manual once-over rather than being silently trusted -
+    # these are the rows most likely to need a spot-check.
+    if reconstructed_eans:
+        import streamlit as st
+        st.warning(
+            "⚠️ EAN reconstructed for " + str(len(reconstructed_eans)) +
+            " item(s) whose row wrapped across a page break - please verify: " +
+            ", ".join(f"{sku} → {ean}" for sku, ean in reconstructed_eans)
+        )
     
     # Show debug in Streamlit
     import streamlit as st
