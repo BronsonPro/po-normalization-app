@@ -134,9 +134,10 @@ def extract_line_items_from_text(pdf_path):
     debug_info = []  # Collect debug info to show in UI
     
     with pdfplumber.open(pdf_path) as pdf:
-        text = pdf.pages[0].extract_text() or ""
-        
-        lines = text.split('\n')
+        lines = []
+        for page in pdf.pages:
+            page_text = page.extract_text() or ""
+            lines.extend(page_text.split('\n'))
         
         # Find header line - check both text and look for tax keywords
         header_line = None
