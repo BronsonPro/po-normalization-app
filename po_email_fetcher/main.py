@@ -43,6 +43,7 @@ def run():
         "skipped_duplicate": 0,
         "unmatched_party": 0,
         "no_pdf": 0,
+        "ignored": 0,
     }
 
     rows_to_write = []  # collected here, written in one batch call at the end
@@ -54,6 +55,24 @@ def run():
 
         party = identify_party(email["sender_address"], email["subject"])
         fetched_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        if party == "IGNORE":
+            summary["ignored"] += 1
+            rows_to_write.append(
+                {
+                    "fetched_at": fetched_at,
+                    "party": "IGNORED",
+                    "po_number": "",
+                    "po_date": "",
+                    "po_quantity": "",
+                    "email_subject": email["subject"],
+                    "extractor_used": "none",
+                    "status": "IGNORED - known non-PO sender",
+                    "error": f"sender={email['sender_address']}",
+                    "message_id": email["message_id"],
+                }
+            )
+            continue
 
         if not party:
             summary["unmatched_party"] += 1
@@ -128,6 +147,7 @@ def run():
     print(f"Needs review             : {summary['failed']}")
     print(f"No PDF attachment        : {summary['no_pdf']}")
     print(f"Unmatched sender         : {summary['unmatched_party']}")
+    print(f"Ignored (known non-PO)   : {summary['ignored']}")
     print(f"Skipped (already logged) : {summary['skipped_duplicate']}")
     print(
         "\nReconciliation check: every email above is now a row in the sheet "
