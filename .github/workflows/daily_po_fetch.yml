@@ -1,0 +1,38 @@
+name: Daily PO Email Fetch
+
+on:
+  schedule:
+    # 5:30 UTC = 11:00 AM IST
+    - cron: "30 5 * * *"
+    # 10:30 UTC = 4:00 PM IST
+    - cron: "30 10 * * *"
+  workflow_dispatch: {}   # also lets you trigger it manually from the GitHub Actions tab if needed
+
+jobs:
+  fetch-pos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd po_email_fetcher
+          pip install -r requirements.txt
+
+      - name: Run PO fetcher
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          MAILBOX_ADDRESS: ${{ secrets.MAILBOX_ADDRESS }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        run: |
+          cd po_email_fetcher
+          python main.py
