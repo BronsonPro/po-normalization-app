@@ -46,15 +46,21 @@ def fetch_new_emails(since_iso_timestamp: str):
     """
     Returns a list of dicts, one per email received after since_iso_timestamp -
     EVERY email in the window is included, even if it has no attachments or
-    no PDF, so nothing can be silently skipped:
+    no extractable one, so nothing can be silently skipped:
         {
             "message_id": str,
             "subject": str,
             "sender_address": str,
             "received_at": str,
-            "pdf_attachments": [ {"filename": str, "content_bytes": bytes}, ... ]
-            # pdf_attachments is [] if the email had no PDF - caller logs this
-            # as "No PDF attachment" instead of dropping it.
+            "extractable_attachments": [
+                {"filename": str, "content_bytes": bytes, "file_type": "pdf"|"xlsx"|"xls"},
+                ...
+            ],
+            "other_attachment_names": [str, ...]
+            # extractable_attachments covers both PDF and Excel POs (some
+            # parties like Big Basket send Excel instead of PDF).
+            # other_attachment_names lists anything else found (images, docs,
+            # csv, etc.) purely for visibility in the status log.
         }
 
     since_iso_timestamp example: "2026-07-07T00:00:00Z"
@@ -87,9 +93,12 @@ def fetch_new_emails(since_iso_timestamp: str):
             message_id = msg["id"]
             received_at = msg.get("receivedDateTime", "")
 
-            pdf_attachments = []
+            extractable_attachments = []
+            other_attachment_names = []
             if msg.get("hasAttachments"):
-                pdf_attachments = _fetch_pdf_attachments(headers, mailbox, message_id)
+                extractable_attachments, other_attachment_names = _fetch_attachments(
+                    headers, mailbox, message_id
+                )
 
             results.append(
                 {
@@ -97,7 +106,8 @@ def fetch_new_emails(since_iso_timestamp: str):
                     "subject": subject,
                     "sender_address": sender_address,
                     "received_at": received_at,
-                    "pdf_attachments": pdf_attachments,
+                    "extractable_attachments": extractable_attachments,
+                    "other_attachment_names": other_attachment_names,
                 }
             )
 
@@ -107,23 +117,41 @@ def fetch_new_emails(since_iso_timestamp: str):
     return results
 
 
-def _fetch_pdf_attachments(headers, mailbox, message_id):
+def _fetch_attachments(headers, mailbox, message_id):
     url = f"{GRAPH_BASE}/users/{mailbox}/messages/{message_id}/attachments"
     resp = requests.get(url, headers=headers)
     resp.raise_for_status()
     data = resp.json()
 
-    pdfs = []
+    extractable = []
+    other_names = []
     for att in data.get("value", []):
         name = att.get("name", "")
-        content_type = att.get("contentType", "")
-        if name.lower().endswith(".pdf") or "pdf" in content_type.lower():
+        name_l = name.lower()
+        content_type = att.get("contentType", "").lower()
+
+        if name_l.endswith(".pdf") or "pdf" in content_type:
+            file_type = "pdf"
+        elif name_l.endswith(".xlsx"):
+            file_type = "xlsx"
+        elif name_l.endswith(".xls"):
+            file_type = "xls"
+        else:
+            file_type = None
+
+        if file_type:
             content_bytes_b64 = att.get("contentBytes")
             if content_bytes_b64:
-                pdfs.append(
+                extractable.append(
                     {
                         "filename": name,
                         "content_bytes": base64.b64decode(content_bytes_b64),
+                        "file_type": file_type,
                     }
                 )
-    return pdfs
+            else:
+                other_names.append(name or content_type or "unnamed attachment")
+        else:
+            other_names.append(name or content_type or "unnamed attachment")
+
+    return extractable, other_names
