@@ -42,6 +42,7 @@ EXCLUDED_SENDERS = {
     "mailer-daemon@googlemail.com",   # bounce message
     "account@orbinter.com",           # your own address
     "orbmumbai@gmail.com",            # your own address
+    "it.a.45.pravin.jaybhaye@gmail.com",  # personal gmail, not a PO source
 }
 
 # Domains confirmed as unrelated (not a party you order from) - always IGNORED
