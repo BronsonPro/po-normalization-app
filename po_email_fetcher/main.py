@@ -66,6 +66,7 @@ def run():
                     "po_date": "",
                     "po_quantity": "",
                     "email_subject": email["subject"],
+                    "sender_address": email["sender_address"],
                     "extractor_used": "none",
                     "status": "IGNORED - known non-PO sender",
                     "error": f"sender={email['sender_address']}",
@@ -84,6 +85,7 @@ def run():
                     "po_date": "",
                     "po_quantity": "",
                     "email_subject": email["subject"],
+                    "sender_address": email["sender_address"],
                     "extractor_used": "none",
                     "status": "FAILED - no party match",
                     "error": f"sender={email['sender_address']}",
@@ -94,6 +96,11 @@ def run():
 
         if not email["pdf_attachments"]:
             summary["no_pdf"] += 1
+            other_names = email.get("other_attachment_names", [])
+            if other_names:
+                detail = f"had non-PDF attachment(s): {', '.join(other_names)}"
+            else:
+                detail = "no attachments at all"
             rows_to_write.append(
                 {
                     "fetched_at": fetched_at,
@@ -102,9 +109,10 @@ def run():
                     "po_date": "",
                     "po_quantity": "",
                     "email_subject": email["subject"],
+                    "sender_address": email["sender_address"],
                     "extractor_used": "none",
                     "status": "NEEDS REVIEW - no PDF attachment",
-                    "error": "",
+                    "error": detail,
                     "message_id": email["message_id"],
                 }
             )
@@ -130,6 +138,7 @@ def run():
                     "po_date": fields["po_date"],
                     "po_quantity": fields["po_quantity"],
                     "email_subject": email["subject"],
+                    "sender_address": email["sender_address"],
                     "extractor_used": fields["extractor_used"],
                     "status": status,
                     "error": fields["error"],
