@@ -7,8 +7,10 @@ Flow:
      "last run" timestamp, so a missed day never causes a gap).
   2. Identify the party from sender + subject.
   3. Extract PO Number / PO Date / PO Quantity from the PDF.
-  4. Write one row per PO to the Google Sheet - success or failure both
-     get logged, so nothing is silently missed.
+  4. Write ALL rows to the Google Sheet in ONE batch call at the end -
+     success or failure both get logged, so nothing is silently missed,
+     and a single batch write avoids hitting Google's API rate limits
+     on days with a lot of emails.
   5. Print a summary at the end.
 """
 
@@ -17,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from party_config import identify_party
 from graph_email_fetcher import fetch_new_emails
 from party_extractors import extract_fields
-from sheets_writer import append_po_row, get_existing_message_ids
+from sheets_writer import append_po_rows_batch, get_existing_message_ids
 
 LOOKBACK_DAYS = 2
 
@@ -43,6 +45,8 @@ def run():
         "no_pdf": 0,
     }
 
+    rows_to_write = []  # collected here, written in one batch call at the end
+
     for email in emails:
         if email["message_id"] in existing_ids:
             summary["skipped_duplicate"] += 1
@@ -53,33 +57,37 @@ def run():
 
         if not party:
             summary["unmatched_party"] += 1
-            append_po_row(
-                fetched_at=fetched_at,
-                party="UNKNOWN",
-                po_number="",
-                po_date="",
-                po_quantity="",
-                email_subject=email["subject"],
-                extractor_used="none",
-                status="FAILED - no party match",
-                error=f"sender={email['sender_address']}",
-                message_id=email["message_id"],
+            rows_to_write.append(
+                {
+                    "fetched_at": fetched_at,
+                    "party": "UNKNOWN",
+                    "po_number": "",
+                    "po_date": "",
+                    "po_quantity": "",
+                    "email_subject": email["subject"],
+                    "extractor_used": "none",
+                    "status": "FAILED - no party match",
+                    "error": f"sender={email['sender_address']}",
+                    "message_id": email["message_id"],
+                }
             )
             continue
 
         if not email["pdf_attachments"]:
             summary["no_pdf"] += 1
-            append_po_row(
-                fetched_at=fetched_at,
-                party=party,
-                po_number="",
-                po_date="",
-                po_quantity="",
-                email_subject=email["subject"],
-                extractor_used="none",
-                status="NEEDS REVIEW - no PDF attachment",
-                error="",
-                message_id=email["message_id"],
+            rows_to_write.append(
+                {
+                    "fetched_at": fetched_at,
+                    "party": party,
+                    "po_number": "",
+                    "po_date": "",
+                    "po_quantity": "",
+                    "email_subject": email["subject"],
+                    "extractor_used": "none",
+                    "status": "NEEDS REVIEW - no PDF attachment",
+                    "error": "",
+                    "message_id": email["message_id"],
+                }
             )
             continue
 
@@ -95,18 +103,23 @@ def run():
             else:
                 summary["failed"] += 1
 
-            append_po_row(
-                fetched_at=fetched_at,
-                party=party,
-                po_number=fields["po_number"],
-                po_date=fields["po_date"],
-                po_quantity=fields["po_quantity"],
-                email_subject=email["subject"],
-                extractor_used=fields["extractor_used"],
-                status=status,
-                error=fields["error"],
-                message_id=email["message_id"],
+            rows_to_write.append(
+                {
+                    "fetched_at": fetched_at,
+                    "party": party,
+                    "po_number": fields["po_number"],
+                    "po_date": fields["po_date"],
+                    "po_quantity": fields["po_quantity"],
+                    "email_subject": email["subject"],
+                    "extractor_used": fields["extractor_used"],
+                    "status": status,
+                    "error": fields["error"],
+                    "message_id": email["message_id"],
+                }
             )
+
+    print(f"Writing {len(rows_to_write)} rows to Google Sheet in a single batch...")
+    append_po_rows_batch(rows_to_write)
 
     print("\n--- Run Summary ---")
     print(f"Total emails in window   : {summary['total_emails_seen']}")
