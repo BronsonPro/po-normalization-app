@@ -94,11 +94,11 @@ def run():
             )
             continue
 
-        if not email["pdf_attachments"]:
+        if not email["extractable_attachments"]:
             summary["no_pdf"] += 1
             other_names = email.get("other_attachment_names", [])
             if other_names:
-                detail = f"had non-PDF attachment(s): {', '.join(other_names)}"
+                detail = f"had non-extractable attachment(s): {', '.join(other_names)}"
             else:
                 detail = "no attachments at all"
             rows_to_write.append(
@@ -111,16 +111,16 @@ def run():
                     "email_subject": email["subject"],
                     "sender_address": email["sender_address"],
                     "extractor_used": "none",
-                    "status": "NEEDS REVIEW - no PDF attachment",
+                    "status": "NEEDS REVIEW - no PDF/Excel attachment",
                     "error": detail,
                     "message_id": email["message_id"],
                 }
             )
             continue
 
-        for attachment in email["pdf_attachments"]:
+        for attachment in email["extractable_attachments"]:
             summary["fetched"] += 1
-            fields = extract_fields(party, attachment["content_bytes"])
+            fields = extract_fields(party, attachment["content_bytes"], attachment["file_type"])
 
             got_all_fields = fields["po_number"] and fields["po_date"] and fields["po_quantity"]
             status = "SUCCESS" if got_all_fields and not fields["error"] else "NEEDS REVIEW"
