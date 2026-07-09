@@ -1,5 +1,6 @@
 msal
 requests
 pdfplumber
+openpyxl
 gspread
 google-auth
