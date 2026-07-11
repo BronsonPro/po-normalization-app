@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 from party_config import identify_party, is_po_subject
 from graph_email_fetcher import fetch_new_emails
-from party_extractors import extract_fields
+from party_extractors import extract_fields, extract_subject_fields
 from sheets_writer import append_po_rows_batch, get_existing_message_ids
 
 LOOKBACK_DAYS = 2
@@ -115,6 +115,30 @@ def run():
             continue
 
         if not email["extractable_attachments"]:
+            subject_fields = extract_subject_fields(party, email["subject"])
+
+            if subject_fields["po_number"] and subject_fields["po_date"]:
+                # Got PO Number + Date from the subject itself - real data,
+                # just missing quantity since there's no attachment here.
+                summary["fetched"] += 1
+                summary["failed"] += 1
+                rows_to_write.append(
+                    {
+                        "fetched_at": fetched_at,
+                        "party": party,
+                        "po_number": subject_fields["po_number"],
+                        "po_date": subject_fields["po_date"],
+                        "po_quantity": "",
+                        "email_subject": email["subject"],
+                        "sender_address": email["sender_address"],
+                        "extractor_used": "subject-line",
+                        "status": "NEEDS REVIEW - quantity not found (no attachment on this email)",
+                        "error": "",
+                        "message_id": email["message_id"],
+                    }
+                )
+                continue
+
             summary["no_pdf"] += 1
             other_names = email.get("other_attachment_names", [])
             if other_names:
@@ -141,6 +165,13 @@ def run():
         for attachment in email["extractable_attachments"]:
             summary["fetched"] += 1
             fields = extract_fields(party, attachment["content_bytes"], attachment["file_type"])
+
+            # Fill gaps from the subject line if the attachment extraction
+            # missed PO Number or PO Date (Quantity has no subject fallback).
+            if not fields["po_number"] or not fields["po_date"]:
+                subject_fields = extract_subject_fields(party, email["subject"])
+                fields["po_number"] = fields["po_number"] or subject_fields["po_number"]
+                fields["po_date"] = fields["po_date"] or subject_fields["po_date"]
 
             got_all_fields = fields["po_number"] and fields["po_date"] and fields["po_quantity"]
             status = "SUCCESS" if got_all_fields and not fields["error"] else "NEEDS REVIEW"
