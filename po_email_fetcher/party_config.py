@@ -55,6 +55,39 @@ EXCLUDED_DOMAINS = {
 }
 
 
+# Once a party is identified by domain, this second check confirms the
+# SPECIFIC EMAIL is an actual PO notification - not other correspondence
+# from the same company (GRN notices, reconciliation, price updates,
+# password resets, etc, which all come from the same domains and would
+# otherwise pollute the review queue). A subject must contain AT LEAST ONE
+# of a party's keywords to be treated as a real PO. Calibrated against a
+# real batch of inbox data reviewed by hand (see PO_Fetch_Log__1_.xlsx).
+PARTY_PO_KEYWORDS = {
+    "Reliance": ["po. intm"],
+    "D-Mart": ["dmart online - orb - ifc po", "dmart online - orb - po", "ifc po"],
+    "Manash": ["manash po"],
+    "Handy Homes": ["handy homes | purchase orders"],
+    "Zepto": ["purchase order for [", "revised purchase order for ["],
+    "Big Basket": ["po details"],
+    "Health & Glow": ["purchase order-"],
+    "Blink": ["po_bcpl"],
+    "Myntra": ["new purchase orders"],
+    "Scootsy": ["narpo"],
+    "Nykaa": ["is released for orb"],
+    "Slikk": ["purchase order"],
+    "Zomato": ["po_bcpl"],  # Zomato sends CC'd copies of Blink's PO_BCPL threads
+}
+
+
+def is_po_subject(party_name: str, subject: str) -> bool:
+    """True if this email's subject matches a known real-PO pattern for the party."""
+    if not subject:
+        return False
+    subject_l = subject.strip().lower()
+    keywords = PARTY_PO_KEYWORDS.get(party_name, [])
+    return any(kw in subject_l for kw in keywords)
+
+
 def identify_party(sender_address: str, subject: str):
     """
     Returns:
