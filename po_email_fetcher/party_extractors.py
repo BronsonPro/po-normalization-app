@@ -96,6 +96,32 @@ EXTRACTORS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# SUBJECT-LINE EXTRACTION - fallback for parties whose PO reference/date is
+# in the email subject itself, not (only) the attachment. Blink and Zomato's
+# PO_BCPL subjects follow "...Orb international-<ref> : <date>" consistently
+# across every related email for the same PO, even the ones with no
+# attachment (reminders/status emails on the same thread) - so this lets us
+# fill PO Number + PO Date even when there's nothing attached. Quantity still
+# requires the attachment.
+# ---------------------------------------------------------------------------
+SUBJECT_PATTERNS = {
+    "Blink": r"Orb international-(\d+)\s*:\s*(\d{4}-\d{2}-\d{2})",
+    "Zomato": r"Orb international-(\d+)\s*:\s*(\d{4}-\d{2}-\d{2})",
+}
+
+
+def extract_subject_fields(party_name: str, subject: str) -> dict:
+    """Returns {"po_number": str, "po_date": str} - both "" if no pattern/match."""
+    pattern = SUBJECT_PATTERNS.get(party_name)
+    if not pattern or not subject:
+        return {"po_number": "", "po_date": ""}
+    m = re.search(pattern, subject, re.IGNORECASE)
+    if not m:
+        return {"po_number": "", "po_date": ""}
+    return {"po_number": m.group(1), "po_date": m.group(2)}
+
+
 def extract_fields(party_name: str, content_bytes: bytes, file_type: str = "pdf") -> dict:
     """
     Returns {"po_number", "po_date", "po_quantity", "extractor_used"}.
