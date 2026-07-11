@@ -43,6 +43,7 @@ EXCLUDED_SENDERS = {
     "account@orbinter.com",           # your own address
     "orbmumbai@gmail.com",            # your own address
     "it.a.45.pravin.jaybhaye@gmail.com",  # personal gmail, not a PO source
+    "microsoftexchange329e71ec88ae4615bbc36ab6ce41109e@orbinter.com",  # auto-generated bounce notices
 }
 
 # Domains confirmed as unrelated (not a party you order from) - always IGNORED
@@ -52,6 +53,9 @@ EXCLUDED_DOMAINS = {
     "reequil.com",
     "partnersbiz.com",
     "aorborc.com",
+    "zohodesk.in",          # helpdesk/ticketing systems (e.g. Nykaa support tickets)
+    "external.instamart.in",  # Swiggy Instamart vendor support - not a tracked party
+    "delhivery.com",        # logistics/courier, not a PO source
 }
 
 
