@@ -16,7 +16,7 @@ Flow:
 
 from datetime import datetime, timedelta, timezone
 
-from party_config import identify_party
+from party_config import identify_party, is_po_subject
 from graph_email_fetcher import fetch_new_emails
 from party_extractors import extract_fields
 from sheets_writer import append_po_rows_batch, get_existing_message_ids
@@ -44,6 +44,7 @@ def run():
         "unmatched_party": 0,
         "no_pdf": 0,
         "ignored": 0,
+        "not_a_po": 0,
     }
 
     rows_to_write = []  # collected here, written in one batch call at the end
@@ -89,6 +90,25 @@ def run():
                     "extractor_used": "none",
                     "status": "FAILED - no party match",
                     "error": f"sender={email['sender_address']}",
+                    "message_id": email["message_id"],
+                }
+            )
+            continue
+
+        if not is_po_subject(party, email["subject"]):
+            summary["not_a_po"] += 1
+            rows_to_write.append(
+                {
+                    "fetched_at": fetched_at,
+                    "party": party,
+                    "po_number": "",
+                    "po_date": "",
+                    "po_quantity": "",
+                    "email_subject": email["subject"],
+                    "sender_address": email["sender_address"],
+                    "extractor_used": "none",
+                    "status": "IGNORED - not a PO notification",
+                    "error": "subject didn't match known PO pattern for this party",
                     "message_id": email["message_id"],
                 }
             )
@@ -157,6 +177,7 @@ def run():
     print(f"No PDF attachment        : {summary['no_pdf']}")
     print(f"Unmatched sender         : {summary['unmatched_party']}")
     print(f"Ignored (known non-PO)   : {summary['ignored']}")
+    print(f"Ignored (not a PO email) : {summary['not_a_po']}")
     print(f"Skipped (already logged) : {summary['skipped_duplicate']}")
     print(
         "\nReconciliation check: every email above is now a row in the sheet "
