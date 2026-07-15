@@ -15,6 +15,8 @@ Two lookups:
                      internal/training mail, bounces, your own addresses)
 """
 
+import re
+
 PARTY_DOMAINS = {
     "ril.com": "Reliance",
     "dmartindia.com": "D-Mart",
@@ -72,7 +74,6 @@ PARTY_PO_KEYWORDS = {
     "Manash": ["manash po"],
     "Handy Homes": ["handy homes | purchase orders"],
     "Zepto": ["purchase order for [", "revised purchase order for ["],
-    "Big Basket": ["po details"],
     "Health & Glow": ["purchase order-"],
     "Blink": ["po_bcpl"],
     "Myntra": ["new purchase orders"],
@@ -82,14 +83,30 @@ PARTY_PO_KEYWORDS = {
     "Zomato": ["po_bcpl"],  # Zomato sends CC'd copies of Blink's PO_BCPL threads
 }
 
+# For parties whose subject format varies too much for a fixed phrase (e.g.
+# Big Basket sends both "...PO Details: PO No..." and "...HYD PO"), use a
+# regex with a word boundary instead of a plain substring list.
+PARTY_PO_REGEX = {
+    "Big Basket": r"\bpo\b",
+}
+
+
 
 def is_po_subject(party_name: str, subject: str) -> bool:
     """True if this email's subject matches a known real-PO pattern for the party."""
     if not subject:
         return False
     subject_l = subject.strip().lower()
+
     keywords = PARTY_PO_KEYWORDS.get(party_name, [])
-    return any(kw in subject_l for kw in keywords)
+    if any(kw in subject_l for kw in keywords):
+        return True
+
+    regex = PARTY_PO_REGEX.get(party_name)
+    if regex and re.search(regex, subject_l, re.IGNORECASE):
+        return True
+
+    return False
 
 
 def identify_party(sender_address: str, subject: str):
