@@ -115,6 +115,27 @@ def run():
             continue
 
         if not email["extractable_attachments"]:
+            is_reply = email["subject"].strip().lower().startswith("re:")
+
+            if is_reply:
+                summary["ignored"] += 1
+                rows_to_write.append(
+                    {
+                        "fetched_at": fetched_at,
+                        "party": party,
+                        "po_number": "",
+                        "po_date": "",
+                        "po_quantity": "",
+                        "email_subject": email["subject"],
+                        "sender_address": email["sender_address"],
+                        "extractor_used": "none",
+                        "status": "IGNORED - reply thread, no attachment",
+                        "error": "likely a reply to a PO already captured separately",
+                        "message_id": email["message_id"],
+                    }
+                )
+                continue
+
             subject_fields = extract_subject_fields(party, email["subject"])
 
             if subject_fields["po_number"] and subject_fields["po_date"]:
@@ -140,28 +161,7 @@ def run():
                 continue
 
             summary["no_pdf"] += 1
-            is_reply = email["subject"].strip().lower().startswith("re:")
             other_names = email.get("other_attachment_names", [])
-
-            if is_reply:
-                rows_to_write.append(
-                    {
-                        "fetched_at": fetched_at,
-                        "party": party,
-                        "po_number": "",
-                        "po_date": "",
-                        "po_quantity": "",
-                        "email_subject": email["subject"],
-                        "sender_address": email["sender_address"],
-                        "extractor_used": "none",
-                        "status": "IGNORED - reply thread, no attachment",
-                        "error": "likely a reply to a PO already captured separately",
-                        "message_id": email["message_id"],
-                    }
-                )
-                summary["no_pdf"] -= 1
-                summary["ignored"] += 1
-                continue
 
             if other_names:
                 detail = f"had non-extractable attachment(s): {', '.join(other_names)}"
