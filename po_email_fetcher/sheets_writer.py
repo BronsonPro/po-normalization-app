@@ -80,6 +80,35 @@ def get_existing_message_ids() -> set:
     return {row[-1] for row in all_values[1:] if row}
 
 
+def get_existing_po_quantities() -> set:
+    """
+    Returns a set of (party, po_number) pairs that already have a non-empty
+    PO Quantity logged. Used so a duplicate/reminder email for a PO already
+    captured elsewhere (e.g. Blink often sends the same PO_BCPL subject
+    multiple times, only one with the attachment) can be recognized as a
+    duplicate instead of flagged "needs review" every time.
+    """
+    ws = _get_worksheet()
+    all_values = ws.get_all_values()
+    if len(all_values) <= 1:
+        return set()
+
+    party_idx = HEADERS.index("Party")
+    po_number_idx = HEADERS.index("PO Number")
+    po_qty_idx = HEADERS.index("PO Quantity")
+
+    result = set()
+    for row in all_values[1:]:
+        if len(row) <= max(party_idx, po_number_idx, po_qty_idx):
+            continue
+        party = row[party_idx].strip()
+        po_number = row[po_number_idx].strip()
+        po_qty = row[po_qty_idx].strip()
+        if party and po_number and po_qty:
+            result.add((party, po_number))
+    return result
+
+
 def append_po_rows_batch(rows: list):
     """
     Writes many rows in a single API call instead of one call per row.
