@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from party_config import identify_party, is_po_subject
 from graph_email_fetcher import fetch_new_emails
 from party_extractors import extract_fields, extract_subject_fields
-from sheets_writer import append_po_rows_batch, get_existing_message_ids
+from sheets_writer import append_po_rows_batch, get_existing_message_ids, get_existing_po_quantities
 
 LOOKBACK_DAYS = 2
 
@@ -34,6 +34,7 @@ def run():
     print(f"Found {len(emails)} emails with PDF attachments.")
 
     existing_ids = get_existing_message_ids()
+    existing_po_with_qty = get_existing_po_quantities()  # (party, po_number) pairs already complete
 
     summary = {
         "total_emails_seen": len(emails),
@@ -45,6 +46,7 @@ def run():
         "no_pdf": 0,
         "ignored": 0,
         "not_a_po": 0,
+        "duplicate_po": 0,
     }
 
     rows_to_write = []  # collected here, written in one batch call at the end
@@ -109,6 +111,30 @@ def run():
                     "extractor_used": "none",
                     "status": "IGNORED - not a PO notification",
                     "error": "subject didn't match known PO pattern for this party",
+                    "message_id": email["message_id"],
+                }
+            )
+            continue
+
+        # Zomato only ever CCs a copy of Blink's PO_BCPL thread - so ANY
+        # reply from Zomato is redundant with data already captured via
+        # Blink or the original Zomato email, regardless of whether this
+        # particular reply happens to carry an attachment.
+        is_reply_subject = email["subject"].strip().lower().startswith("re:")
+        if party == "Zomato" and is_reply_subject:
+            summary["ignored"] += 1
+            rows_to_write.append(
+                {
+                    "fetched_at": fetched_at,
+                    "party": party,
+                    "po_number": "",
+                    "po_date": "",
+                    "po_quantity": "",
+                    "email_subject": email["subject"],
+                    "sender_address": email["sender_address"],
+                    "extractor_used": "none",
+                    "status": "IGNORED - reply thread (Zomato CC)",
+                    "error": "duplicate of a PO already captured via Blink/original email",
                     "message_id": email["message_id"],
                 }
             )
@@ -219,6 +245,25 @@ def run():
                 }
             )
 
+    # Build the set of (party, po_number) pairs that DO have quantity data,
+    # combining what's already in the sheet with what this batch just found -
+    # so a duplicate/reminder email (no attachment) for the same PO gets
+    # recognized as redundant instead of flagged "needs review" every run.
+    complete_po_pairs = set(existing_po_with_qty)
+    for r in rows_to_write:
+        if r["party"] and r["po_number"] and r["po_quantity"]:
+            complete_po_pairs.add((r["party"], r["po_number"]))
+
+    for r in rows_to_write:
+        if (
+            r["status"] == "NEEDS REVIEW - quantity not found (no attachment on this email)"
+            and (r["party"], r["po_number"]) in complete_po_pairs
+        ):
+            r["status"] = "IGNORED - duplicate, PO already captured with quantity elsewhere"
+            r["error"] = ""
+            summary["failed"] -= 1
+            summary["duplicate_po"] += 1
+
     print(f"Writing {len(rows_to_write)} rows to Google Sheet in a single batch...")
     append_po_rows_batch(rows_to_write)
 
@@ -231,6 +276,7 @@ def run():
     print(f"Unmatched sender         : {summary['unmatched_party']}")
     print(f"Ignored (known non-PO)   : {summary['ignored']}")
     print(f"Ignored (not a PO email) : {summary['not_a_po']}")
+    print(f"Ignored (duplicate PO)   : {summary['duplicate_po']}")
     print(f"Skipped (already logged) : {summary['skipped_duplicate']}")
     print(
         "\nReconciliation check: every email above is now a row in the sheet "
