@@ -136,6 +136,10 @@ def _fetch_attachments(headers, mailbox, message_id):
             file_type = "xlsx"
         elif name_l.endswith(".xls"):
             file_type = "xls"
+        elif name_l.endswith(".csv"):
+            file_type = "csv"
+        elif name_l.endswith(".zip"):
+            file_type = "zip"
         else:
             file_type = None
 
