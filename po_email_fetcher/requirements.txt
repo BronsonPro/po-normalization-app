@@ -2,5 +2,7 @@ msal
 requests
 pdfplumber
 openpyxl
+pandas
+streamlit
 gspread
 google-auth
