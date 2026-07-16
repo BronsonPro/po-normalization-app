@@ -58,6 +58,7 @@ EXCLUDED_DOMAINS = {
     "zohodesk.in",          # helpdesk/ticketing systems (e.g. Nykaa support tickets)
     "external.instamart.in",  # Swiggy Instamart vendor support - not a tracked party
     "delhivery.com",        # logistics/courier, not a PO source
+    "icici.bank.in",        # bank notification
 }
 
 
@@ -109,6 +110,12 @@ def is_po_subject(party_name: str, subject: str) -> bool:
     return False
 
 
+def _domain_matches(domain: str, known_domain: str) -> bool:
+    """True if domain equals known_domain OR is a subdomain of it
+    (e.g. "nykaaeretailltd.zohodesk.in" matches known_domain "zohodesk.in")."""
+    return domain == known_domain or domain.endswith("." + known_domain)
+
+
 def identify_party(sender_address: str, subject: str):
     """
     Returns:
@@ -129,10 +136,11 @@ def identify_party(sender_address: str, subject: str):
 
     domain = sender_l.split("@", 1)[1]
 
-    if domain in EXCLUDED_DOMAINS:
+    if any(_domain_matches(domain, ed) for ed in EXCLUDED_DOMAINS):
         return "IGNORE"
 
-    if domain in PARTY_DOMAINS:
-        return PARTY_DOMAINS[domain]
+    for known_domain, party_name in PARTY_DOMAINS.items():
+        if _domain_matches(domain, known_domain):
+            return party_name
 
     return None
