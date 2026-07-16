@@ -16,8 +16,35 @@ import re
 import pdfplumber
 import openpyxl
 import io
+import csv
+import zipfile
 
 from existing_parsers_bridge import get_summary_from_existing_parser
+
+
+def _get_csv_text(csv_bytes: bytes) -> str:
+    """Flattens CSV rows into the same 'label value' style text used for
+    Excel, so the same regex extractors can run on it."""
+    text = csv_bytes.decode("utf-8", errors="replace")
+    reader = csv.reader(io.StringIO(text))
+    lines = []
+    for row in reader:
+        cells = [c.strip() for c in row if c and c.strip()]
+        if cells:
+            lines.append(" ".join(cells))
+    return "\n".join(lines)
+
+
+def _get_zip_pdf_text(zip_bytes: bytes) -> str:
+    """Opens a ZIP attachment and extracts text from the first PDF found
+    inside it (Health & Glow sometimes sends the PO PDF zipped)."""
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        pdf_names = [n for n in zf.namelist() if n.lower().endswith(".pdf")]
+        if not pdf_names:
+            raise ValueError("no PDF found inside zip attachment")
+        with zf.open(pdf_names[0]) as f:
+            inner_pdf_bytes = f.read()
+    return _get_pdf_text(inner_pdf_bytes)
 
 
 def _get_pdf_text(pdf_bytes: bytes) -> str:
@@ -72,7 +99,7 @@ def extract_generic(text: str) -> dict:
         text,
     )
     po_date = _search(
-        r"(?:PO\s*Date|Order Date|Date)\s*[:\-]?\s*([\d/\-]{6,10})",
+        r"(?:PO\s*Date|Order Date|Date)\s*[:\-]?\s*([\d]{1,2}[\-/][A-Za-z]{3,9}[\-/][\d]{2,4}|[\d/\-]{6,10})",
         text,
     )
     po_quantity = _search(
@@ -152,6 +179,10 @@ def extract_fields(party_name: str, content_bytes: bytes, file_type: str = "pdf"
             text = _get_pdf_text(content_bytes)
         elif file_type in ("xlsx", "xls"):
             text = _get_excel_text(content_bytes)
+        elif file_type == "csv":
+            text = _get_csv_text(content_bytes)
+        elif file_type == "zip":
+            text = _get_zip_pdf_text(content_bytes)
         else:
             raise ValueError(f"Unsupported file_type: {file_type}")
     except Exception as e:
