@@ -17,6 +17,8 @@ import pdfplumber
 import openpyxl
 import io
 
+from existing_parsers_bridge import get_summary_from_existing_parser
+
 
 def _get_pdf_text(pdf_bytes: bytes) -> str:
     text_parts = []
@@ -130,7 +132,21 @@ def extract_fields(party_name: str, content_bytes: bytes, file_type: str = "pdf"
 
     file_type: "pdf", "xlsx", or "xls" - determines how text is pulled out
     before the party-specific (or generic) label extractor runs on it.
+
+    PRIORITY: try the existing PO normalization app's calibrated parser
+    first (parsers/zepto.py, parsers/nykaa.py, etc. via
+    existing_parsers_bridge) - these are already tested against real
+    layouts. Only fall back to the lighter internal extractor (Myntra
+    regex or generic guesser) if there's no existing-parser mapping for
+    this party, or it fails.
     """
+    bridge_result = get_summary_from_existing_parser(party_name, content_bytes)
+    if bridge_result is not None:
+        if not bridge_result["error"]:
+            bridge_result["extractor_used"] = f"existing-parser ({party_name})"
+            return bridge_result
+        # Existing parser errored - fall through to internal extractor as backup
+
     try:
         if file_type == "pdf":
             text = _get_pdf_text(content_bytes)
@@ -144,7 +160,8 @@ def extract_fields(party_name: str, content_bytes: bytes, file_type: str = "pdf"
             "po_date": "",
             "po_quantity": "",
             "extractor_used": "none",
-            "error": f"File read failed ({file_type}): {e}",
+            "error": f"File read failed ({file_type}): {e}"
+            + (f" [existing parser also failed: {bridge_result['error']}]" if bridge_result else ""),
         }
 
     extractor = EXTRACTORS.get(party_name, extract_generic)
