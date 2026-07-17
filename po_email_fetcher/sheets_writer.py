@@ -1,5 +1,9 @@
 """
-Writes PO rows to a Google Sheet using a service account.
+Writes PO rows to a Google Sheet using a service account, split across two tabs:
+  - "Sheet1" (main tab)  -> SUCCESS and NEEDS REVIEW rows (the ones worth acting on)
+  - "Ignored" (second tab) -> IGNORED... and FAILED - no party match rows
+Kept separate for a trial period so you can compare/verify before deleting
+the ignored rows outright.
 
 One-time setup (2 min, no admin approval needed):
   1. Go to console.cloud.google.com -> create/select a project.
@@ -13,15 +17,13 @@ One-time setup (2 min, no admin approval needed):
      contents of that JSON key file (as a string), and GOOGLE_SHEET_ID to
      the sheet's ID (the long string in the sheet's URL).
 
-Sheet columns (row 1 headers, in this exact order):
+Sheet columns (row 1 headers, in this exact order, same on both tabs):
   Fetched At | Party | PO Number | PO Date | PO Quantity | Email Subject |
-  Extractor Used | Status | Error | Message ID
+  Sender Address | Extractor Used | Status | Error | Message ID
 
-IMPORTANT: the worksheet connection is cached at module level (_ws_cache)
-so a run only opens/authenticates the sheet ONCE, no matter how many PO
-rows it writes. Writing many rows one-call-per-row was hitting Google's
-"60 read requests per minute" quota on large batches - rows are now
-collected and sent with a single append_rows() batch call instead.
+IMPORTANT: worksheet connections are cached at module level so a run only
+opens/authenticates each tab ONCE, no matter how many rows it writes -
+writing one-call-per-row was hitting Google's rate limit on large batches.
 """
 
 import os
@@ -45,60 +47,90 @@ HEADERS = [
     "Message ID",
 ]
 
-_ws_cache = None  # cached worksheet handle, reused for the life of the process
+IGNORED_TAB_NAME = "Ignored"
+
+_ws_cache = {}       # {"main": worksheet, "ignored": worksheet}
+_spreadsheet_cache = None
 
 
-def _get_worksheet():
-    global _ws_cache
-    if _ws_cache is not None:
-        return _ws_cache
+def _get_spreadsheet():
+    global _spreadsheet_cache
+    if _spreadsheet_cache is not None:
+        return _spreadsheet_cache
 
     creds_json = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"])
     creds = Credentials.from_service_account_info(creds_json, scopes=SCOPES)
     client = gspread.authorize(creds)
 
     sheet_id = os.environ["GOOGLE_SHEET_ID"]
-    sh = client.open_by_key(sheet_id)
-    ws = sh.sheet1
+    _spreadsheet_cache = client.open_by_key(sheet_id)
+    return _spreadsheet_cache
 
-    # Ensure headers exist (only checked once per run now)
+
+def _ensure_headers(ws):
     first_row = ws.row_values(1)
     if first_row != HEADERS:
         ws.update("A1", [HEADERS])
 
-    _ws_cache = ws
+
+def _get_main_worksheet():
+    if "main" in _ws_cache:
+        return _ws_cache["main"]
+    sh = _get_spreadsheet()
+    ws = sh.sheet1
+    _ensure_headers(ws)
+    _ws_cache["main"] = ws
     return ws
 
 
+def _get_ignored_worksheet():
+    if "ignored" in _ws_cache:
+        return _ws_cache["ignored"]
+    sh = _get_spreadsheet()
+    try:
+        ws = sh.worksheet(IGNORED_TAB_NAME)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title=IGNORED_TAB_NAME, rows=1000, cols=len(HEADERS))
+    _ensure_headers(ws)
+    _ws_cache["ignored"] = ws
+    return ws
+
+
+def _is_ignored_status(status: str) -> bool:
+    return status.startswith("IGNORED") or status.startswith("FAILED")
+
+
+def _all_values_both_tabs():
+    main_values = _get_main_worksheet().get_all_values()
+    ignored_values = _get_ignored_worksheet().get_all_values()
+    main_rows = main_values[1:] if len(main_values) > 1 else []
+    ignored_rows = ignored_values[1:] if len(ignored_values) > 1 else []
+    return main_rows + ignored_rows
+
+
 def get_existing_message_ids() -> set:
-    """Used for dedup - never process the same email twice."""
-    ws = _get_worksheet()
-    all_values = ws.get_all_values()
-    if len(all_values) <= 1:
-        return set()
-    # Message ID is the last column
-    return {row[-1] for row in all_values[1:] if row}
+    """Used for dedup - never process the same email twice. Checks BOTH tabs."""
+    all_rows = _all_values_both_tabs()
+    return {row[-1] for row in all_rows if row}
 
 
 def get_existing_po_quantities() -> set:
     """
     Returns a set of (party, po_number) pairs that already have a non-empty
-    PO Quantity logged. Used so a duplicate/reminder email for a PO already
-    captured elsewhere (e.g. Blink often sends the same PO_BCPL subject
-    multiple times, only one with the attachment) can be recognized as a
-    duplicate instead of flagged "needs review" every time.
+    PO Quantity logged (checked across both tabs). Used so a duplicate/
+    reminder email for a PO already captured elsewhere (e.g. Blink often
+    sends the same PO_BCPL subject multiple times, only one with the
+    attachment) can be recognized as a duplicate instead of flagged
+    "needs review" every time.
     """
-    ws = _get_worksheet()
-    all_values = ws.get_all_values()
-    if len(all_values) <= 1:
-        return set()
+    all_rows = _all_values_both_tabs()
 
     party_idx = HEADERS.index("Party")
     po_number_idx = HEADERS.index("PO Number")
     po_qty_idx = HEADERS.index("PO Quantity")
 
     result = set()
-    for row in all_values[1:]:
+    for row in all_rows:
         if len(row) <= max(party_idx, po_number_idx, po_qty_idx):
             continue
         party = row[party_idx].strip()
@@ -109,34 +141,48 @@ def get_existing_po_quantities() -> set:
     return result
 
 
+def _row_to_values(r: dict) -> list:
+    return [
+        r["fetched_at"],
+        r["party"],
+        r["po_number"],
+        r["po_date"],
+        r["po_quantity"],
+        r["email_subject"],
+        r["sender_address"],
+        r["extractor_used"],
+        r["status"],
+        r["error"],
+        r["message_id"],
+    ]
+
+
 def append_po_rows_batch(rows: list):
     """
-    Writes many rows in a single API call instead of one call per row.
-    `rows` is a list of dicts, each with the same keys as append_po_row's
-    arguments used to take individually (fetched_at, party, po_number, ...).
+    Splits rows between the main tab (SUCCESS / NEEDS REVIEW) and the
+    Ignored tab (IGNORED... / FAILED - no party match), writing each group
+    in a single batch call per tab instead of one call per row.
     """
     if not rows:
         return
 
-    ws = _get_worksheet()
-    values = [
-        [
-            r["fetched_at"],
-            r["party"],
-            r["po_number"],
-            r["po_date"],
-            r["po_quantity"],
-            r["email_subject"],
-            r["sender_address"],
-            r["extractor_used"],
-            r["status"],
-            r["error"],
-            r["message_id"],
-        ]
-        for r in rows
-    ]
+    main_values = []
+    ignored_values = []
+    for r in rows:
+        values = _row_to_values(r)
+        if _is_ignored_status(r["status"]):
+            ignored_values.append(values)
+        else:
+            main_values.append(values)
 
-    # Chunk writes to stay well under Sheets API limits on very large batches
     CHUNK_SIZE = 200
-    for i in range(0, len(values), CHUNK_SIZE):
-        ws.append_rows(values[i : i + CHUNK_SIZE], value_input_option="RAW")
+
+    if main_values:
+        ws = _get_main_worksheet()
+        for i in range(0, len(main_values), CHUNK_SIZE):
+            ws.append_rows(main_values[i : i + CHUNK_SIZE], value_input_option="RAW")
+
+    if ignored_values:
+        ws = _get_ignored_worksheet()
+        for i in range(0, len(ignored_values), CHUNK_SIZE):
+            ws.append_rows(ignored_values[i : i + CHUNK_SIZE], value_input_option="RAW")
