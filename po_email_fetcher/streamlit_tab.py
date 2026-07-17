@@ -14,12 +14,12 @@ import streamlit as st
 import pandas as pd
 
 from po_email_fetcher.main import run
-from po_email_fetcher.sheets_writer import _get_worksheet
+from po_email_fetcher.sheets_writer import _get_main_worksheet
 
 
 def render_po_fetcher_tab():
     st.subheader("PO email fetcher")
-    st.caption("Runs automatically every day at 9:00 AM. Use the button below to check on demand.")
+    st.caption("Runs automatically twice a day (11 AM, 4 PM). Use the button below to check on demand.")
 
     col1, col2 = st.columns([1, 3])
     with col1:
@@ -35,10 +35,10 @@ def render_po_fetcher_tab():
             )
 
     st.markdown("---")
-    st.markdown("**Status log** (most recent first)")
+    st.markdown("**Status log** - Success / Needs Review only (see the sheet's 'Ignored' tab for everything else)")
 
     try:
-        ws = _get_worksheet()
+        ws = _get_main_worksheet()
         records = ws.get_all_records()
         if records:
             df = pd.DataFrame(records)
@@ -48,8 +48,6 @@ def render_po_fetcher_tab():
                 status = str(row.get("Status", ""))
                 if status == "SUCCESS":
                     return ["background-color: #eaf3de"] * len(row)
-                elif "FAILED" in status or "UNKNOWN" in str(row.get("Party", "")):
-                    return ["background-color: #fcebeb"] * len(row)
                 elif "NEEDS REVIEW" in status:
                     return ["background-color: #faeeda"] * len(row)
                 return [""] * len(row)
