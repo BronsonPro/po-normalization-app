@@ -20,6 +20,7 @@ import re
 from party_config import identify_party, is_po_subject
 from graph_email_fetcher import fetch_new_emails
 from party_extractors import extract_fields, extract_subject_fields
+from existing_parsers_bridge import pick_best_attachment
 from sheets_writer import append_po_rows_batch, get_existing_message_ids, get_existing_po_quantities
 
 LOOKBACK_DAYS = 2
@@ -211,40 +212,40 @@ def run():
             )
             continue
 
-        for attachment in email["extractable_attachments"]:
-            summary["fetched"] += 1
-            fields = extract_fields(party, attachment["content_bytes"], attachment["file_type"])
+        attachment = pick_best_attachment(party, email["extractable_attachments"])
+        summary["fetched"] += 1
+        fields = extract_fields(party, attachment["content_bytes"], attachment["file_type"])
 
-            # Fill gaps from the subject line if the attachment extraction
-            # missed PO Number or PO Date (Quantity has no subject fallback).
-            if not fields["po_number"] or not fields["po_date"]:
-                subject_fields = extract_subject_fields(party, email["subject"])
-                fields["po_number"] = fields["po_number"] or subject_fields["po_number"]
-                fields["po_date"] = fields["po_date"] or subject_fields["po_date"]
+        # Fill gaps from the subject line if the attachment extraction
+        # missed PO Number or PO Date (Quantity has no subject fallback).
+        if not fields["po_number"] or not fields["po_date"]:
+            subject_fields = extract_subject_fields(party, email["subject"])
+            fields["po_number"] = fields["po_number"] or subject_fields["po_number"]
+            fields["po_date"] = fields["po_date"] or subject_fields["po_date"]
 
-            got_all_fields = fields["po_number"] and fields["po_date"] and fields["po_quantity"]
-            status = "SUCCESS" if got_all_fields and not fields["error"] else "NEEDS REVIEW"
+        got_all_fields = fields["po_number"] and fields["po_date"] and fields["po_quantity"]
+        status = "SUCCESS" if got_all_fields and not fields["error"] else "NEEDS REVIEW"
 
-            if status == "SUCCESS":
-                summary["success"] += 1
-            else:
-                summary["failed"] += 1
+        if status == "SUCCESS":
+            summary["success"] += 1
+        else:
+            summary["failed"] += 1
 
-            rows_to_write.append(
-                {
-                    "fetched_at": fetched_at,
-                    "party": party,
-                    "po_number": fields["po_number"],
-                    "po_date": fields["po_date"],
-                    "po_quantity": fields["po_quantity"],
-                    "email_subject": email["subject"],
-                    "sender_address": email["sender_address"],
-                    "extractor_used": fields["extractor_used"],
-                    "status": status,
-                    "error": fields["error"],
-                    "message_id": email["message_id"],
-                }
-            )
+        rows_to_write.append(
+            {
+                "fetched_at": fetched_at,
+                "party": party,
+                "po_number": fields["po_number"],
+                "po_date": fields["po_date"],
+                "po_quantity": fields["po_quantity"],
+                "email_subject": email["subject"],
+                "sender_address": email["sender_address"],
+                "extractor_used": fields["extractor_used"],
+                "status": status,
+                "error": fields["error"],
+                "message_id": email["message_id"],
+            }
+        )
 
     # Build the set of (party, po_number) pairs that DO have quantity data,
     # combining what's already in the sheet with what this batch just found -
