@@ -23,7 +23,7 @@ from party_extractors import extract_fields, extract_subject_fields
 from existing_parsers_bridge import pick_best_attachment
 from sheets_writer import append_po_rows_batch, get_existing_message_ids, get_existing_po_quantities
 
-LOOKBACK_DAYS = 2
+LOOKBACK_DAYS = 3
 
 
 def run():
