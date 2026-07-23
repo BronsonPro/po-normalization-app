@@ -15,6 +15,7 @@ Flow:
 """
 
 from datetime import datetime, timedelta, timezone
+import re
 
 from party_config import identify_party, is_po_subject
 from graph_email_fetcher import fetch_new_emails
@@ -120,7 +121,7 @@ def run():
         # reply from Zomato is redundant with data already captured via
         # Blink or the original Zomato email, regardless of whether this
         # particular reply happens to carry an attachment.
-        is_reply_subject = email["subject"].strip().lower().startswith("re:")
+        is_reply_subject = bool(re.search(r"\bre:", email["subject"], re.IGNORECASE))
         if party == "Zomato" and is_reply_subject:
             summary["ignored"] += 1
             rows_to_write.append(
@@ -141,7 +142,7 @@ def run():
             continue
 
         if not email["extractable_attachments"]:
-            is_reply = email["subject"].strip().lower().startswith("re:")
+            is_reply = bool(re.search(r"\bre:", email["subject"], re.IGNORECASE))
 
             if is_reply:
                 summary["ignored"] += 1
