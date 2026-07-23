@@ -159,3 +159,41 @@ def get_summary_from_existing_parser(party_name: str, content_bytes: bytes) -> d
                 "po_quantity": "",
                 "error": f"existing parser ({module_name}) failed: {e}",
             }
+
+
+# Default priority when a party has no known expected type (or the
+# preferred type isn't among what's attached) - PDF first since that's
+# the real PO document for most parties.
+_DEFAULT_TYPE_PRIORITY = ["pdf", "xlsx", "xls", "csv", "zip"]
+
+
+def pick_best_attachment(party_name: str, attachments: list):
+    """
+    An email can have more than one attachment (e.g. a Zepto email with
+    both the real PO PDF and an unrelated CSV) - processing every
+    attachment separately was creating a spurious extra row per email, with
+    garbage data extracted from whichever file isn't actually the PO. This
+    picks the ONE attachment that matches the party's known real PO format
+    (from PARSER_MODULES), falling back to a sensible type priority
+    (pdf > xlsx > xls > csv > zip) if the party isn't in that mapping or
+    none of its attachments match the expected type.
+
+    Returns None if attachments is empty.
+    """
+    if not attachments:
+        return None
+    if len(attachments) == 1:
+        return attachments[0]
+
+    expected_type = PARSER_MODULES.get(party_name, (None, None))[1]
+    if expected_type:
+        for a in attachments:
+            if a["file_type"] == expected_type:
+                return a
+
+    for ft in _DEFAULT_TYPE_PRIORITY:
+        for a in attachments:
+            if a["file_type"] == ft:
+                return a
+
+    return attachments[0]
