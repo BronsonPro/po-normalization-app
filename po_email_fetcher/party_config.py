@@ -93,11 +93,25 @@ PARTY_PO_REGEX = {
 
 
 
+# Subject substrings that look like they'd match a party's PO pattern but
+# are confirmed NOT real POs - checked first, before the positive match,
+# so they're excluded even though they'd otherwise pass (e.g. Big Basket's
+# "ARS PO details" emails are auto-replenishment stock reports, not actual
+# purchase orders, despite containing "PO").
+PARTY_PO_EXCLUDE_KEYWORDS = {
+    "Big Basket": ["ars po details"],
+}
+
+
 def is_po_subject(party_name: str, subject: str) -> bool:
     """True if this email's subject matches a known real-PO pattern for the party."""
     if not subject:
         return False
     subject_l = subject.strip().lower()
+
+    exclude_keywords = PARTY_PO_EXCLUDE_KEYWORDS.get(party_name, [])
+    if any(kw in subject_l for kw in exclude_keywords):
+        return False
 
     keywords = PARTY_PO_KEYWORDS.get(party_name, [])
     if any(kw in subject_l for kw in keywords):
