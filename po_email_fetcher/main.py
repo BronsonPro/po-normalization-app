@@ -206,7 +206,7 @@ def run():
                     "email_subject": email["subject"],
                     "sender_address": email["sender_address"],
                     "extractor_used": "none",
-                    "status": "NEEDS REVIEW - no PDF/Excel attachment",
+                    "status": "IGNORED - no attachment",
                     "error": detail,
                     "message_id": email["message_id"],
                 }
