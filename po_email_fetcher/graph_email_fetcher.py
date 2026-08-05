@@ -139,7 +139,16 @@ def _fetch_attachments(headers, mailbox, message_id):
         elif name_l.endswith(".csv"):
             file_type = "csv"
         elif name_l.endswith(".zip"):
-            file_type = "zip"
+            # Some parties (e.g. Myntra, when batching multiple POs in one
+            # email) send TWO zips - one of PDFs, one of Excels - plus a
+            # summary xlsx. Tag by filename so we can prefer the real PDF
+            # documents over the summary/Excel versions.
+            if "pdf" in name_l:
+                file_type = "zip_pdf"
+            elif "excel" in name_l or "xls" in name_l:
+                file_type = "zip_excel"
+            else:
+                file_type = "zip"
         else:
             file_type = None
 
