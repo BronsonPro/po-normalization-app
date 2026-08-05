@@ -25,6 +25,9 @@ import sys
 import tempfile
 import importlib
 import openpyxl
+import re
+import io
+import pdfplumber
 
 # The real parsers live in the repo's top-level parsers/ folder, a sibling
 # of this po_email_fetcher/ folder. Make it importable without moving/
@@ -110,6 +113,30 @@ def _read_summary_from_output(output_path):
     return po_number, po_date, quantity_sum
 
 
+def _extract_stated_total_quantity(pdf_bytes: bytes):
+    """
+    Safety net: some parties' PDFs (Myntra confirmed so far) print their own
+    "Total Quantity: N" line. If our computed sum of line-item quantities
+    doesn't match what the PDF itself states, that means some row was
+    mis-parsed (e.g. a page-break text-reflow artifact dropping or
+    corrupting a row) - safer to flag for manual review than to silently
+    trust a wrong number in a business-critical quantity field. Returns
+    None (skip the check) if the PDF has no such line, or isn't a PDF.
+    """
+    try:
+        text_parts = []
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            for page in pdf.pages:
+                text_parts.append(page.extract_text() or "")
+        full_text = "\n".join(text_parts)
+        m = re.search(r"Total Quantity\s*:\s*([\d,]+)", full_text, re.IGNORECASE)
+        if m:
+            return int(m.group(1).replace(",", ""))
+    except Exception:
+        pass
+    return None
+
+
 def get_summary_from_existing_parser(party_name: str, content_bytes: bytes) -> dict:
     """
     Returns None if this party has no existing-parser mapping (caller should
@@ -142,6 +169,21 @@ def get_summary_from_existing_parser(party_name: str, content_bytes: bytes) -> d
                     "po_quantity": "",
                     "error": "existing parser ran but produced no header/quantity data",
                 }
+
+            # Cross-check against the PDF's own stated total, if present
+            if input_ext == "pdf":
+                stated_total = _extract_stated_total_quantity(content_bytes)
+                if stated_total is not None and int(quantity_sum) != stated_total:
+                    return {
+                        "po_number": po_number,
+                        "po_date": po_date,
+                        "po_quantity": "",
+                        "error": (
+                            f"quantity mismatch: computed {int(quantity_sum)} but PDF "
+                            f"states Total Quantity: {stated_total} - a row was likely "
+                            f"mis-parsed (page-break artifact) - needs manual check"
+                        ),
+                    }
 
             quantity_str = (
                 str(int(quantity_sum)) if quantity_sum == int(quantity_sum) else str(quantity_sum)
