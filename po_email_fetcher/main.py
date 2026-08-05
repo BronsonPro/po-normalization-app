@@ -19,7 +19,7 @@ import re
 
 from party_config import identify_party, is_po_subject
 from graph_email_fetcher import fetch_new_emails
-from party_extractors import extract_fields, extract_subject_fields
+from party_extractors import extract_fields, extract_subject_fields, extract_all_from_zip
 from existing_parsers_bridge import pick_best_attachment
 from sheets_writer import append_po_rows_batch, get_existing_message_ids
 
@@ -214,6 +214,59 @@ def run():
             continue
 
         attachment = pick_best_attachment(party, email["extractable_attachments"])
+
+        if attachment["file_type"] == "zip_pdf":
+            # Batch email bundling multiple POs (e.g. Myntra "5 New Purchase
+            # Orders" with one PDF per PO inside the zip) - one row per PDF,
+            # not one row for the whole email.
+            zip_results = extract_all_from_zip(party, attachment["content_bytes"])
+
+            if not zip_results:
+                summary["no_pdf"] += 1
+                rows_to_write.append(
+                    {
+                        "fetched_at": fetched_at,
+                        "party": party,
+                        "po_number": "",
+                        "po_date": "",
+                        "po_quantity": "",
+                        "email_subject": email["subject"],
+                        "sender_address": email["sender_address"],
+                        "extractor_used": "none",
+                        "status": "IGNORED - no attachment",
+                        "error": "zip attachment contained no PDFs",
+                        "message_id": email["message_id"],
+                    }
+                )
+                continue
+
+            for fields in zip_results:
+                summary["fetched"] += 1
+                got_all_fields = fields["po_number"] and fields["po_date"] and fields["po_quantity"]
+                status = "SUCCESS" if got_all_fields and not fields["error"] else "NEEDS REVIEW"
+
+                if status == "SUCCESS":
+                    summary["success"] += 1
+                else:
+                    summary["failed"] += 1
+
+                rows_to_write.append(
+                    {
+                        "fetched_at": fetched_at,
+                        "party": party,
+                        "po_number": fields["po_number"],
+                        "po_date": fields["po_date"],
+                        "po_quantity": fields["po_quantity"],
+                        "email_subject": f"{email['subject']} [{fields.get('inner_filename', '')}]",
+                        "sender_address": email["sender_address"],
+                        "extractor_used": fields["extractor_used"],
+                        "status": status,
+                        "error": fields["error"],
+                        "message_id": email["message_id"],
+                    }
+                )
+            continue
+
         summary["fetched"] += 1
         fields = extract_fields(party, attachment["content_bytes"], attachment["file_type"])
 
