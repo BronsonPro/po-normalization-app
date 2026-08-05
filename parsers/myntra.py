@@ -262,6 +262,17 @@ def extract_line_items_from_text(pdf_path):
                     if part.startswith('BNPL'):
                         sku_idx = i
                         break
+                    elif 'BNPL' in part:
+                        # Page-break artifact: leftover digits from the
+                        # previous row's EAN got glued directly onto this
+                        # row's SKU code with no space in between (e.g.
+                        # "41869624348BNPLMKKT107393092"). Without this,
+                        # the whole item is silently skipped since no token
+                        # STARTS with BNPL even though one contains it.
+                        bnpl_pos = part.index('BNPL')
+                        parts[i] = part[bnpl_pos:]
+                        sku_idx = i
+                        break
                 
                 if sku_idx == -1:
                     continue
@@ -333,7 +344,7 @@ def extract_line_items_from_text(pdf_path):
                     if prefix:
                         for i in range(sku_idx + 2, ean_search_end):
                             p = parts[i]
-                            if p.isdigit() and 3 <= len(p) <= 6:
+                            if p.isdigit() and 2 <= len(p) <= 6:
                                 candidate = prefix + p
                                 if 13 <= len(candidate) <= 14:
                                     ean = candidate
@@ -500,6 +511,31 @@ def convert_pdf_to_excel(pdf_path, output_excel_path):
 
     if products.empty:
         raise Exception("No line items found in Myntra PO")
+
+    # Safety check: the PDF itself states its own "Total Quantity: N" line.
+    # If our computed sum of line-item quantities doesn't match it, some
+    # row was mis-parsed (typically a page-break text-reflow artifact
+    # dropping or corrupting a row's data) - surface this loudly rather
+    # than silently pushing a wrong quantity through to packing/Django.
+    computed_qty_total = int(products["Quantity"].sum())
+    stated_qty_total = None
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+        m = re.search(r"Total Quantity\s*:\s*([\d,]+)", full_text, re.IGNORECASE)
+        if m:
+            stated_qty_total = int(m.group(1).replace(",", ""))
+    except Exception:
+        pass
+
+    if stated_qty_total is not None and computed_qty_total != stated_qty_total:
+        import streamlit as st
+        st.warning(
+            f"⚠️ QUANTITY MISMATCH: this PO's line items sum to {computed_qty_total}, "
+            f"but the PDF states Total Quantity: {stated_qty_total}. A row was likely "
+            f"mis-parsed (page-break artifact) - please verify the quantities below "
+            f"against the original PDF before using this data."
+        )
 
     grand_total = extract_summary(pdf_path)
     total_base = round((products["Base Rate"] * products["Quantity"]).sum(), 2)
