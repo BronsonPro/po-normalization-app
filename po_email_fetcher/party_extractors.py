@@ -47,6 +47,28 @@ def _get_zip_pdf_text(zip_bytes: bytes) -> str:
     return _get_pdf_text(inner_pdf_bytes)
 
 
+def extract_all_from_zip(party_name: str, zip_bytes: bytes) -> list:
+    """
+    For batch emails that bundle multiple POs into one zip (e.g. Myntra's
+    "PO_PDF's_....zip" when a subject says "5 New Purchase Orders") - runs
+    FULL field extraction (existing-parser bridge, same as a normal single
+    PDF) on EVERY PDF found inside, not just the first. Returns a list of
+    result dicts, one per inner PDF, each with an added "inner_filename" key.
+    Returns an empty list if the zip has no PDFs inside (caller should
+    treat that as "no extractable attachment").
+    """
+    results = []
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        pdf_names = [n for n in zf.namelist() if n.lower().endswith(".pdf")]
+        for name in pdf_names:
+            with zf.open(name) as f:
+                inner_pdf_bytes = f.read()
+            result = extract_fields(party_name, inner_pdf_bytes, "pdf")
+            result["inner_filename"] = name
+            results.append(result)
+    return results
+
+
 def _get_pdf_text(pdf_bytes: bytes) -> str:
     text_parts = []
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
