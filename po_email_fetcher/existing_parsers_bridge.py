@@ -164,19 +164,32 @@ def get_summary_from_existing_parser(party_name: str, content_bytes: bytes) -> d
 # Default priority when a party has no known expected type (or the
 # preferred type isn't among what's attached) - PDF first since that's
 # the real PO document for most parties.
-_DEFAULT_TYPE_PRIORITY = ["pdf", "xlsx", "xls", "csv", "zip"]
+# Default priority when a party has no known expected type (or the
+# preferred type isn't among what's attached) - PDF (or a zip of PDFs)
+# first since that's the real PO document for most parties.
+_DEFAULT_TYPE_PRIORITY = ["pdf", "zip_pdf", "xlsx", "zip_excel", "xls", "csv", "zip"]
+
+# A zip of PDFs/Excels should count as a match when a party expects plain
+# pdf/xlsx - Myntra, for example, sends a "PO_PDF's_....zip" alongside a
+# "PO_Excels_....zip" and a plain summary xlsx in one email.
+_TYPE_COMPATIBLE = {
+    "pdf": ["pdf", "zip_pdf"],
+    "xlsx": ["xlsx", "zip_excel"],
+}
 
 
 def pick_best_attachment(party_name: str, attachments: list):
     """
     An email can have more than one attachment (e.g. a Zepto email with
-    both the real PO PDF and an unrelated CSV) - processing every
-    attachment separately was creating a spurious extra row per email, with
-    garbage data extracted from whichever file isn't actually the PO. This
-    picks the ONE attachment that matches the party's known real PO format
-    (from PARSER_MODULES), falling back to a sensible type priority
-    (pdf > xlsx > xls > csv > zip) if the party isn't in that mapping or
-    none of its attachments match the expected type.
+    both the real PO PDF and an unrelated CSV, or Myntra batching multiple
+    POs with a PDF zip + Excel zip + summary xlsx all in one email) -
+    processing every attachment separately was creating spurious extra
+    rows, with garbage data extracted from whichever file isn't actually
+    the PO. This picks the ONE attachment that matches the party's known
+    real PO format (from PARSER_MODULES) - a zip of that type counts as a
+    match too - falling back to a sensible type priority if the party
+    isn't in that mapping or none of its attachments match the expected
+    type.
 
     Returns None if attachments is empty.
     """
@@ -187,8 +200,12 @@ def pick_best_attachment(party_name: str, attachments: list):
 
     expected_type = PARSER_MODULES.get(party_name, (None, None))[1]
     if expected_type:
+        compatible_types = _TYPE_COMPATIBLE.get(expected_type, [expected_type])
         for a in attachments:
             if a["file_type"] == expected_type:
+                return a
+        for a in attachments:
+            if a["file_type"] in compatible_types:
                 return a
 
     for ft in _DEFAULT_TYPE_PRIORITY:
