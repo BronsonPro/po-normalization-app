@@ -352,6 +352,28 @@ def extract_line_items_from_text(pdf_path):
                                     ean_reconstructed = True
                                     debug_info.append(f"Backward-reconstructed EAN: {prefix} + {p} = {ean}")
                                     break
+
+                        # The suffix fragment isn't always on THIS line - it
+                        # can land on the very next line instead (e.g. the
+                        # product name's continuation line starts with the
+                        # short digit fragment before the words, like
+                        # "78 112.01"). Only check the first token of the
+                        # next line so we don't accidentally consume an
+                        # unrelated number further into that line.
+                        if not ean and idx + 1 < len(lines):
+                            next_line = lines[idx + 1].strip()
+                            if next_line and 'BNPL' not in next_line:
+                                next_parts = next_line.split()
+                                for p in next_parts:
+                                    if p.isdigit() and 2 <= len(p) <= 6:
+                                        candidate = prefix + p
+                                        if 13 <= len(candidate) <= 14:
+                                            ean = candidate
+                                            ean_reconstructed = True
+                                            debug_info.append(
+                                                f"Backward+forward-reconstructed EAN: {prefix} + {p} = {ean}"
+                                            )
+                                        break
                 
                 # If EAN found and it's less than 13 digits, check next line for continuation
                 if ean and len(ean) < 13 and idx + 1 < len(lines):
