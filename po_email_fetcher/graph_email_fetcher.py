@@ -17,6 +17,8 @@ import os
 import base64
 import requests
 import msal
+import zipfile
+import io
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
@@ -117,6 +119,32 @@ def fetch_new_emails(since_iso_timestamp: str):
     return results
 
 
+def _classify_zip_contents(zip_bytes: bytes, name_l: str) -> str:
+    """
+    Determines whether a zip attachment holds PDFs or Excel/CSV files by
+    actually looking inside it - not just guessing from the filename.
+    (Health & Glow's zip, for example, is named
+    "103776-BNO104-ORB_INTERNATIONAL__JEVA_.zip" - no hint of "pdf" in the
+    name at all, even though it contains PDFs - so filename-only guessing
+    was picking the wrong attachment.) Falls back to filename hints only if
+    the zip can't be opened/inspected for some reason.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            names = [n.lower() for n in zf.namelist()]
+            if any(n.endswith(".pdf") for n in names):
+                return "zip_pdf"
+            if any(n.endswith(".xlsx") or n.endswith(".xls") for n in names):
+                return "zip_excel"
+            return "zip"
+    except Exception:
+        if "pdf" in name_l:
+            return "zip_pdf"
+        elif "excel" in name_l or "xls" in name_l:
+            return "zip_excel"
+        return "zip"
+
+
 def _fetch_attachments(headers, mailbox, message_id):
     url = f"{GRAPH_BASE}/users/{mailbox}/messages/{message_id}/attachments"
     resp = requests.get(url, headers=headers)
@@ -139,26 +167,22 @@ def _fetch_attachments(headers, mailbox, message_id):
         elif name_l.endswith(".csv"):
             file_type = "csv"
         elif name_l.endswith(".zip"):
-            # Some parties (e.g. Myntra, when batching multiple POs in one
-            # email) send TWO zips - one of PDFs, one of Excels - plus a
-            # summary xlsx. Tag by filename so we can prefer the real PDF
-            # documents over the summary/Excel versions.
-            if "pdf" in name_l:
-                file_type = "zip_pdf"
-            elif "excel" in name_l or "xls" in name_l:
-                file_type = "zip_excel"
-            else:
-                file_type = "zip"
+            file_type = "zip"  # refined below, once we have the actual bytes
         else:
             file_type = None
 
         if file_type:
             content_bytes_b64 = att.get("contentBytes")
             if content_bytes_b64:
+                content_bytes = base64.b64decode(content_bytes_b64)
+
+                if file_type == "zip":
+                    file_type = _classify_zip_contents(content_bytes, name_l)
+
                 extractable.append(
                     {
                         "filename": name,
-                        "content_bytes": base64.b64decode(content_bytes_b64),
+                        "content_bytes": content_bytes,
                         "file_type": file_type,
                     }
                 )
