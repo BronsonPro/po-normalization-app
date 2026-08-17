@@ -269,7 +269,14 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
                     return datetime.strptime(date_str, fmt).strftime("%d-%m-%Y")
                 except:
                     continue
-            return fallback
+            # None of the explicit formats matched (e.g. non-standard month
+            # abbreviations like "Sept" instead of "Sep") - fall back to
+            # dateutil's flexible parser before giving up.
+            try:
+                from dateutil import parser as date_parser
+                return date_parser.parse(date_str, dayfirst=True).strftime("%d-%m-%Y")
+            except Exception:
+                return fallback
         
         formatted_po_date = format_date(po_date)
         
