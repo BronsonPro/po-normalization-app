@@ -1,6 +1,6 @@
 import os
 import importlib.util
-import streamlit as st 
+import streamlit as st
 import pandas as pd
 import tempfile
 import re
@@ -269,9 +269,6 @@ def upload_to_django(po_number, party_code_value, po_date, po_expiry_date):
                     return datetime.strptime(date_str, fmt).strftime("%d-%m-%Y")
                 except:
                     continue
-            # None of the explicit formats matched (e.g. non-standard month
-            # abbreviations like "Sept" instead of "Sep") - fall back to
-            # dateutil's flexible parser before giving up.
             try:
                 from dateutil import parser as date_parser
                 return date_parser.parse(date_str, dayfirst=True).strftime("%d-%m-%Y")
@@ -542,6 +539,48 @@ def format_2_dec(x):
         return x
 
 
+def nykaa_fill_unmatched_from_code(merged_df, po_ean_col, master_df, fill_map):
+    """For Nykaa POs where the EAN column sometimes holds Nykaa's internal
+    'Nykaa Code' instead of a real barcode EAN (common when a product has
+    no registered EAN), fall back to matching those rows against master's
+    'Nykaa Code' column and fill in the given master-derived columns.
+
+    fill_map: dict of {column_to_fill_in_merged_df: source_column_in_master_df}
+    Only rows still unmatched after the primary EAN merge are touched.
+    """
+    if "Nykaa Code" not in master_df.columns:
+        return merged_df
+
+    check_col = next(iter(fill_map.keys()))
+    if check_col not in merged_df.columns:
+        return merged_df
+
+    unmatched_mask = merged_df[check_col].isna()
+    try:
+        unmatched_mask = unmatched_mask | (pd.to_numeric(merged_df[check_col], errors="coerce").fillna(1) == 0)
+    except Exception:
+        pass
+
+    if not unmatched_mask.any():
+        return merged_df
+
+    code_lookup = (
+        master_df.dropna(subset=["Nykaa Code"])
+        .assign(**{"Nykaa Code": lambda d: d["Nykaa Code"].astype(str).str.strip()})
+        .drop_duplicates(subset=["Nykaa Code"], keep="first")
+        .set_index("Nykaa Code")
+    )
+
+    for idx in merged_df[unmatched_mask].index:
+        code_val = str(merged_df.at[idx, po_ean_col]).strip()
+        if code_val in code_lookup.index:
+            for target_col, source_col in fill_map.items():
+                if source_col in code_lookup.columns:
+                    merged_df.at[idx, target_col] = code_lookup.at[code_val, source_col]
+
+    return merged_df
+
+
 # ================== STEP 1 ==================
 st.header("Step 1: Upload PO")
 
@@ -664,6 +703,8 @@ if po_df is not None and master_df is not None:
                 if party == "Nykaa":
                     if is_master and "taxable rate" in cl:
                         rename[c] = "Base Rate"
+                    if is_master and ("nykaa code" in cl or "nykaacode" in cl):
+                        rename[c] = "Nykaa Code"
 
                 if party == "TiraBeauty":
                     if not is_master and any(k in cl for k in ["base", "cost"]):
@@ -846,6 +887,8 @@ if po_df is not None and master_df is not None:
                 master["EAN"] = master["EAN"].astype(str).str.strip().str.replace(".0", "", regex=False)
                 po = po[po["EAN"].str.len() > 0]
                 master = master[master["EAN"].str.len() > 0]
+                if "Nykaa Code" in master.columns:
+                    master["Nykaa Code"] = master["Nykaa Code"].astype(str).str.strip().str.replace(".0", "", regex=False)
 
             else:
                 po["EAN"] = pd.to_numeric(po["EAN"], errors="coerce")
@@ -879,6 +922,17 @@ if po_df is not None and master_df is not None:
                     
         else:
             merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
+            if party == "Nykaa":
+                merged = nykaa_fill_unmatched_from_code(
+                    merged, "EAN", master,
+                    {
+                        "MRP_MASTER": "MRP",
+                        "Base Rate_MASTER": "Base Rate",
+                        "GST %_MASTER": "GST %",
+                        "Product Name_MASTER": "Product Name",
+                        "HSN Code_MASTER": "HSN Code",
+                    }
+                )
 
         for col in merged.select_dtypes(include=['object']).columns:
             merged[col] = merged[col].astype(str)
@@ -971,6 +1025,14 @@ if po_df is not None and master_df is not None:
                 how="left",
                 suffixes=("_PO", "_MASTER")
             )
+            if party == "Nykaa":
+                upd = nykaa_fill_unmatched_from_code(
+                    upd, "EAN", master,
+                    {
+                        "Product Name_MASTER": "Product Name",
+                        "HSN Code_MASTER": "HSN Code",
+                    }
+                )
         
         # Add rack number
         if rack_master is not None:
@@ -1431,5 +1493,3 @@ if 'mismatch_report' in st.session_state:
     #st.dataframe(st.session_state['mismatch_report'], width="stretch")
     #with open(st.session_state['mismatch_path'], "rb") as file:
      #   st.download_button("⬇ Download Mismatch Report", file, "Mismatch_Report.xlsx", key="mismatch_download_persistent")
-
-
