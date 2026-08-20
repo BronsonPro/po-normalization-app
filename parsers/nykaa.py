@@ -1,7 +1,6 @@
 import pdfplumber
 import pandas as pd
 import re
-import re
 
 # ------------------ HEADER EXTRACTION ------------------
 
