@@ -578,6 +578,16 @@ def nykaa_fill_unmatched_from_code(merged_df, po_ean_col, master_df, fill_map):
                 if source_col in code_lookup.columns:
                     merged_df.at[idx, target_col] = code_lookup.at[code_val, source_col]
 
+            # This row's EAN column was actually holding the Nykaa Code, not a
+            # real barcode. Now that we've matched it, replace it with the real
+            # EAN from master so everything downstream - the final exported PO,
+            # the Django upload, and the mobile app's own EAN-based matching -
+            # uses the real barcode going forward instead of the internal code.
+            if "EAN" in code_lookup.columns:
+                real_ean = code_lookup.at[code_val, "EAN"]
+                if pd.notna(real_ean) and str(real_ean).strip():
+                    merged_df.at[idx, po_ean_col] = str(real_ean).strip()
+
     return merged_df
 
 
