@@ -21,11 +21,11 @@ def extract_po_header(pdf_path):
         m = re.search(pattern, src, re.DOTALL | re.IGNORECASE)
         return m.group(1).strip() if m else ""
 
-    # Superstore POs show "Pan : AAFCN5072P" (colon, not the "PAN - ..."
-    # dash format the regular Nykaa PO uses), so the buyer-name regex used
-    # for the regular Nykaa parser doesn't match here. The buyer is always
-    # Nykaa E-Retail Limited (Superstore) for this party, so hardcode it.
-    buyer_name = "Nykaa E-Retail Limited (Superstore)"
+    # This must match the "Party Name" text used in PartyCode.xlsx exactly
+    # (after lowercasing/punctuation-stripping) so the party-code lookup in
+    # app.py can find it - Superstore POs don't reliably state this on the
+    # PDF in a parseable way, so it's hardcoded here.
+    buyer_name = "Nykaa Superstore"
 
     buyer_gstin = find(r"GSTN:\s*([A-Z0-9]+)") or find(r"Shipping Address.*?GSTIN\s*:\s*([A-Z0-9]+)")
 
