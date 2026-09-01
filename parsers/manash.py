@@ -53,6 +53,18 @@ def extract_po_header(pdf_path):
         # Take the last pincode found (delivery address typically appears last)
         shipping_address = all_pins[-1]
 
+    # Manash POs often leave "Validity End Date :" blank on the PDF - default
+    # to 60 days from the PO date so the exported PO always has a real
+    # expiry date rather than a blank.
+    if not po_expiry and po_date:
+        try:
+            from datetime import datetime, timedelta
+            po_date_parsed = datetime.strptime(po_date, "%d.%m.%Y")
+            expiry_dt = po_date_parsed + timedelta(days=60)
+            po_expiry = expiry_dt.strftime("%d.%m.%Y")
+        except Exception:
+            pass
+
     return {
         "Party Name": party_name,
         "PO No": po_no,
