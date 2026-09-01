@@ -122,12 +122,16 @@ def extract_line_items(pdf_path):
                    not next_line.startswith("Page"):
                     product_name = next_line
 
-            # If EAN not in line, try to extract from SKU code
+            # If the PDF's own EAN token is missing on this line, leave the
+            # SKU code itself as a placeholder in the EAN field. Don't try to
+            # guess by pulling a 12-14 digit run out of the SKU code -
+            # testing showed that only works when Purple's SKU-code naming
+            # happens to embed the real EAN, and finds nothing at all for
+            # SKU codes that don't (e.g. "PPLB1267BP17NM6"). The placeholder
+            # lets app.py resolve the real EAN via a master-file lookup on
+            # Purple SKU Code instead, which is reliable for every row.
             if not ean:
-                # Extract full digit sequence from SKU (12-14 digits)
-                ean_in_sku = re.search(r'(\d{12,14})', sku)
-                if ean_in_sku:
-                    ean = ean_in_sku.group(1)
+                ean = sku
 
             items.append({
                 "Sr #": int(sr_no),
