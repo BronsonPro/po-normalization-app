@@ -82,6 +82,12 @@ def extract_products(raw):
     products = pd.DataFrame()
     products["Sr #"] = range(1, len(df) + 1)
     products["EAN"] = df["EAN/UPC Code"].astype(str).str.strip().str.replace(".0", "", regex=False)
+    # BigBasket's own internal item code ("BB Code"). Sometimes BigBasket
+    # fills the EAN/UPC Code column with this same code instead of a real
+    # barcode, or leaves EAN/UPC Code blank entirely - keeping this as its
+    # own column lets app.py look up the real EAN from the master file by
+    # BB Code whenever the EAN/UPC Code value doesn't match a real barcode.
+    products["BB Code"] = df["SKU Code"].astype(str).str.strip().str.replace(".0", "", regex=False)
     products["Product Name"] = df["Description"].astype(str).str.strip()
     products["HSN Code"] = df["HSN Code"].astype(str).str.strip().str.replace(".0", "", regex=False)
     products["Quantity"] = pd.to_numeric(df["Quantity"], errors="coerce").fillna(0).astype(int)
@@ -91,6 +97,13 @@ def extract_products(raw):
     products["GST %"] = pd.to_numeric(df["GST%"], errors="coerce").fillna(0).round(2)
     # Total = Basic Cost x Qty x (1 + GST%)
     products["Total"] = pd.to_numeric(df["Total Value"], errors="coerce").fillna(0).round(2)
+
+    # If EAN/UPC Code was genuinely blank, use the BB Code as a unique
+    # per-row placeholder instead of leaving "nan"/empty in every such row -
+    # otherwise these rows would collapse into one another under later
+    # EAN-based deduplication, and get dropped instead of being matched.
+    blank_ean_mask = products["EAN"].isin(["", "nan", "None"])
+    products.loc[blank_ean_mask, "EAN"] = products.loc[blank_ean_mask, "BB Code"]
 
     return products, header_row
 
