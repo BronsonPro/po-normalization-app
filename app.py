@@ -507,7 +507,7 @@ def read_normalized_po_table(excel_path):
         # Values will be populated from master file later
         pass
 
-    elif party in ("Nykaa", "Nykaa Superstore", "Manash"):
+    elif party in ("Nykaa", "Nykaa Superstore", "Manash", "BigBasket"):
     # These parties can have alphanumeric EANs (Nykaa Code / Purple SKU Code placeholders), so don't filter by numeric EAN
         df = df[
             ((df[qty_col] > 0) if qty_col else True) &
@@ -540,20 +540,31 @@ def format_2_dec(x):
         return x
 
 
-def nykaa_fill_unmatched_from_code(merged_df, po_ean_col, master_df, fill_map):
-    """For Nykaa POs where the EAN column sometimes holds Nykaa's internal
-    'Nykaa Code' instead of a real barcode EAN (common when a product has
-    no registered EAN), fall back to matching those rows against master's
-    'Nykaa Code' column and fill in the given master-derived columns.
+def nykaa_fill_unmatched_from_code(merged_df, po_ean_col, master_df, fill_map, code_source_col=None):
+    """For POs where a row's real EAN is missing or wrong and the PO instead
+    carries an internal party-specific code (Nykaa Code, Purple SKU Code, BB
+    Code...), fall back to matching those rows against master's 'Nykaa Code'
+    column (the shared internal name every party's code gets renamed to) and
+    fill in the given master-derived columns.
 
     fill_map: dict of {column_to_fill_in_merged_df: source_column_in_master_df}
     Only rows still unmatched after the primary EAN merge are touched.
+
+    code_source_col: which column in merged_df holds the code to look up.
+    Defaults to po_ean_col (Nykaa/Manash keep the code directly in the EAN
+    column). Pass a different column (e.g. "BB Code") when the party keeps
+    its internal code in a separate column instead - the real EAN found is
+    still written into po_ean_col either way.
     """
     if "Nykaa Code" not in master_df.columns:
         return merged_df
 
     check_col = next(iter(fill_map.keys()))
     if check_col not in merged_df.columns:
+        return merged_df
+
+    lookup_col = code_source_col if code_source_col else po_ean_col
+    if lookup_col not in merged_df.columns:
         return merged_df
 
     unmatched_mask = merged_df[check_col].isna()
@@ -573,17 +584,18 @@ def nykaa_fill_unmatched_from_code(merged_df, po_ean_col, master_df, fill_map):
     )
 
     for idx in merged_df[unmatched_mask].index:
-        code_val = str(merged_df.at[idx, po_ean_col]).strip()
+        code_val = str(merged_df.at[idx, lookup_col]).strip()
         if code_val in code_lookup.index:
             for target_col, source_col in fill_map.items():
                 if source_col in code_lookup.columns:
                     merged_df.at[idx, target_col] = code_lookup.at[code_val, source_col]
 
-            # This row's EAN column was actually holding the Nykaa Code, not a
-            # real barcode. Now that we've matched it, replace it with the real
-            # EAN from master so everything downstream - the final exported PO,
-            # the Django upload, and the mobile app's own EAN-based matching -
-            # uses the real barcode going forward instead of the internal code.
+            # This row's EAN column was actually holding the internal code (or
+            # was blank/wrong), not a real barcode. Now that we've matched it,
+            # replace it with the real EAN from master so everything
+            # downstream - the final exported PO, the Django upload, and the
+            # mobile app's own EAN-based matching - uses the real barcode
+            # going forward instead of the internal code.
             if "EAN" in code_lookup.columns:
                 real_ean = code_lookup.at[code_val, "EAN"]
                 if pd.notna(real_ean) and str(real_ean).strip():
@@ -754,6 +766,12 @@ if po_df is not None and master_df is not None:
                         rename[c] = "GST %"
                     if is_master and "barcode" in cl:
                         rename[c] = "EAN"
+                    # BigBasket's master file calls its internal item code
+                    # "BB code" instead of "Nykaa Code" - map it to the same
+                    # internal "Nykaa Code" name so
+                    # nykaa_fill_unmatched_from_code works for this party too.
+                    if is_master and cl == "bb code":
+                        rename[c] = "Nykaa Code"
 
                 if party == "Manash":
                     if is_master and "taxable rate" in cl:
@@ -911,7 +929,7 @@ if po_df is not None and master_df is not None:
     
             
         else:
-            if party in ("Nykaa", "Nykaa Superstore", "Manash"):
+            if party in ("Nykaa", "Nykaa Superstore", "Manash", "BigBasket"):
                 # Nykaa (and Nykaa Superstore) can have alphanumeric EANs - keep as string
                 po["EAN"] = po["EAN"].astype(str).str.strip().str.replace(".0", "", regex=False)
                 master["EAN"] = master["EAN"].astype(str).str.strip().str.replace(".0", "", regex=False)
@@ -919,6 +937,12 @@ if po_df is not None and master_df is not None:
                 master = master[master["EAN"].str.len() > 0]
                 if "Nykaa Code" in master.columns:
                     master["Nykaa Code"] = master["Nykaa Code"].astype(str).str.strip().str.replace(".0", "", regex=False)
+                if "BB Code" in po.columns:
+                    # BB Code round-trips through the intermediate Excel file
+                    # and gets re-inferred as a float column on read-back,
+                    # picking up a trailing ".0" that would otherwise break
+                    # the exact-string match against master's Nykaa Code.
+                    po["BB Code"] = po["BB Code"].astype(str).str.strip().str.replace(".0", "", regex=False)
 
             else:
                 po["EAN"] = pd.to_numeric(po["EAN"], errors="coerce")
@@ -952,7 +976,7 @@ if po_df is not None and master_df is not None:
                     
         else:
             merged = po.merge(master, on="EAN", how="left", suffixes=("_PO", "_MASTER"))
-            if party in ("Nykaa", "Nykaa Superstore", "Manash"):
+            if party in ("Nykaa", "Nykaa Superstore", "Manash", "BigBasket"):
                 merged = nykaa_fill_unmatched_from_code(
                     merged, "EAN", master,
                     {
@@ -961,7 +985,8 @@ if po_df is not None and master_df is not None:
                         "GST %_MASTER": "GST %",
                         "Product Name_MASTER": "Product Name",
                         "HSN Code_MASTER": "HSN Code",
-                    }
+                    },
+                    code_source_col="BB Code" if party == "BigBasket" else None,
                 )
 
         for col in merged.select_dtypes(include=['object']).columns:
@@ -1055,19 +1080,20 @@ if po_df is not None and master_df is not None:
                 how="left",
                 suffixes=("_PO", "_MASTER")
             )
-            if party in ("Nykaa", "Nykaa Superstore", "Manash"):
+            if party in ("Nykaa", "Nykaa Superstore", "Manash", "BigBasket"):
                 upd = nykaa_fill_unmatched_from_code(
                     upd, "EAN", master,
                     {
                         "Product Name_MASTER": "Product Name",
                         "HSN Code_MASTER": "HSN Code",
-                    }
+                    },
+                    code_source_col="BB Code" if party == "BigBasket" else None,
                 )
         
         # Add rack number
         if rack_master is not None:
                 # Convert rack_master EAN to match upd EAN type
-            if party in ("Nykaa", "Nykaa Superstore", "Manash"):
+            if party in ("Nykaa", "Nykaa Superstore", "Manash", "BigBasket"):
                 rack_master["EAN"] = rack_master["EAN"].astype(str).str.strip()
             elif party == "FOY":
                 rack_master["EAN"] = pd.to_numeric(rack_master["EAN"], errors="coerce")
