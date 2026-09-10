@@ -1169,6 +1169,15 @@ if po_df is not None and master_df is not None:
                 item_code_idx = header_values.index("Item Code")
                 final_raw.drop(final_raw.columns[item_code_idx], axis=1, inplace=True)
         
+        # BigBasket: Remove BB Code column from final sheet - it's only
+        # needed internally to look up the real EAN from master; keeping it
+        # in the final exported PO disrupts the print layout.
+        if party == "BigBasket":
+            header_values = final_raw.iloc[table_header_row].astype(str).str.strip().tolist()
+            if "BB Code" in header_values:
+                bb_code_idx = header_values.index("BB Code")
+                final_raw.drop(final_raw.columns[bb_code_idx], axis=1, inplace=True)
+        
         # Get PO number
         po_number = "PO"
         for i in range(table_header_row):
