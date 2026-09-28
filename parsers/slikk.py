@@ -2,6 +2,7 @@ import pdfplumber
 import pandas as pd
 import re
 import pytesseract
+from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 
 # ------------------ OCR / GRID HELPERS ------------------
@@ -86,11 +87,95 @@ def _ocr_cell(im, x0, y0, x1, y1, psm=6):
     return txt.replace("\n", " ").strip()
 
 
-def _ocr_row(im, cols, y0, y1, executor=None, psm=6):
-    """OCR every cell of one row. When an executor is given, the cells (11
-    independent subprocess calls for a product row) are dispatched
-    concurrently - order is preserved by executor.map, so output is byte-
-    for-byte identical to the old sequential version, just faster."""
+def _ocr_row_batched(im, cols, y0, y1, psm=6, gap=24):
+    """OCR a whole row in ONE tesseract call instead of one call per cell
+    (11 for a product row), while still giving Tesseract each cell as its
+    own visually isolated block - exactly like the per-cell version, just
+    laid out in a single composite image instead of dispatched as 11
+    separate subprocess calls.
+
+    Why this exists: the thread-pool parallelism in _ocr_row only helps
+    when multiple CPU cores are actually free to overlap on - Streamlit
+    Community Cloud containers are commonly limited to a single vCPU,
+    where running several "concurrent" tesseract subprocesses just
+    time-slices one core and barely beats doing them one at a time. The
+    dominant cost is per-call subprocess spin-up (~0.17s), which scales
+    with the NUMBER of calls, not the core count - cutting 11 calls/row
+    down to 1 removes that cost outright regardless of cores available.
+
+    An earlier version of this function cropped the entire row width
+    (~2400px, an extreme ~26:1 aspect ratio) and OCR'd it as one wide
+    line. That measurably corrupted numeric values on some rows even
+    though the crop was visually clean (reproduced independently via
+    plain pytesseract.image_to_string on the saved crop) - Tesseract's
+    own layout analysis mis-segmenting that unusual shape, not a bug in
+    the column-bucketing here. Stacking each cell into its own generously
+    padded vertical slot instead keeps every cell the same shape/size
+    pytesseract already handles reliably (a small isolated block of
+    text), so this is the per-cell approach's accuracy in a single call,
+    not a differently-shaped OCR problem.
+    """
+    from pytesseract import Output
+
+    n_cols = len(cols) - 1
+    crops = []
+    for c in range(n_cols):
+        left = int(cols[c] * SCALE) + 3
+        top = int(y0 * SCALE) + 3
+        right = int(cols[c + 1] * SCALE) - 3
+        bottom = int(y1 * SCALE) - 3
+        crops.append(im.crop((left, top, right, bottom)) if right > left and bottom > top else None)
+
+    real_crops = [c for c in crops if c is not None]
+    if not real_crops:
+        return ["" for _ in range(n_cols)]
+    max_w = max(c.width for c in real_crops)
+    slot_h = max(c.height for c in real_crops)
+    stride = slot_h + gap
+
+    canvas = Image.new("RGB", (max_w, stride * n_cols), "white")
+    for c, crop in enumerate(crops):
+        if crop is not None:
+            canvas.paste(crop, (0, c * stride))
+
+    data = pytesseract.image_to_data(canvas, config=f"--psm {psm}", output_type=Output.DICT)
+
+    buckets = [[] for _ in range(n_cols)]
+    for i, word in enumerate(data["text"]):
+        word = word.strip()
+        if not word:
+            continue
+        # A faint remnant of a cell's own border line, still visible
+        # despite the inward margin, occasionally gets OCR'd as a lone "|"
+        # and would otherwise leak into whichever slot it landed in - it's
+        # never a real character in this template's codes, rates or
+        # names, so drop it.
+        if re.fullmatch(r"[|]+", word):
+            continue
+        slot = max(0, min(n_cols - 1, data["top"][i] // stride))
+        # Within a slot, a wrapped multi-line cell (e.g. a 2-line Product
+        # Name) needs its lines read top-to-bottom, then left-to-right on
+        # each - sort by (top, left), not left alone, or wrapped lines get
+        # interleaved with each other.
+        buckets[slot].append((data["top"][i], data["left"][i], word))
+
+    result = []
+    for b in buckets:
+        b.sort(key=lambda t: t[0])
+        result.append(" ".join(w for _, w in b))
+    return result
+
+
+def _ocr_row(im, cols, y0, y1, executor=None, psm=6, batch=False):
+    """OCR every cell of one row.
+    - batch=True: one tesseract call for the whole row (see
+      _ocr_row_batched) - the big win on single-core deployments.
+    - executor given (and not batching): the 11 per-cell calls are
+      dispatched concurrently - helps only when multiple cores are free.
+    - neither: original sequential per-cell calls.
+    Order is preserved in all three, so downstream parsing is unaffected."""
+    if batch:
+        return _ocr_row_batched(im, cols, y0, y1, psm=psm)
     cells = [(cols[c], y0, cols[c + 1], y1) for c in range(len(cols) - 1)]
     if executor is not None and len(cells) > 1:
         return list(executor.map(lambda c: _ocr_cell(im, c[0], c[1], c[2], c[3], psm=psm), cells))
