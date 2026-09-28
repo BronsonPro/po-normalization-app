@@ -1,4 +1,5 @@
 import os
+import hashlib
 import importlib.util
 import streamlit as st
 import pandas as pd
@@ -618,28 +619,56 @@ if po_file:
     st.success(f"Loaded: {po_file.name}")
     ext = po_file.name.split(".")[-1].lower()
 
+    # Streamlit re-runs this whole script top-to-bottom on every widget
+    # interaction anywhere in the app - including ones unrelated to this
+    # file, like uploading the master file in Step 2 below. Without
+    # caching, that meant a slow parser (Slikk's OCR-based one can take a
+    # minute or more) re-ran from scratch on every single click, which is
+    # what made the app feel like it was "hanging". Converting the same
+    # uploaded file for the same party is deterministic, so it only needs
+    # to happen once: cache the converted output in session_state, keyed
+    # by a hash of the file's own bytes plus the selected party, and reuse
+    # it on later reruns until the person uploads a different file or
+    # switches party.
+    file_bytes = po_file.getvalue()
+    file_hash = hashlib.md5(file_bytes).hexdigest()
+    cache_key = f"{file_hash}_{party}_{ext}"
+
     if ext == "pdf":
         if convert_pdf_to_excel is None:
             st.error("Parser not available for selected party.")
             st.stop()
 
         input_path = os.path.join(tempfile.gettempdir(), po_file.name)
-        converted_po_path = os.path.join(tempfile.gettempdir(), "po_converted.xlsx")
+        converted_po_path = os.path.join(tempfile.gettempdir(), f"po_converted_{file_hash}.xlsx")
 
-        with open(input_path, "wb") as f:
-            f.write(po_file.read())
+        if st.session_state.get("po_conversion_key") != cache_key:
+            with open(input_path, "wb") as f:
+                f.write(file_bytes)
+            with st.spinner(f"Converting {party} PO... this can take a while for some parties."):
+                convert_pdf_to_excel(input_path, converted_po_path)
+            st.session_state["po_conversion_key"] = cache_key
+            st.session_state["po_conversion_path"] = converted_po_path
+        else:
+            converted_po_path = st.session_state["po_conversion_path"]
 
-        convert_pdf_to_excel(input_path, converted_po_path)
         po_df, raw_po, table_header_row = read_normalized_po_table(converted_po_path)
         st.download_button("⬇ Download Converted PO", open(converted_po_path, "rb"), "PO_Converted.xlsx")
 
     else:
         if convert_pdf_to_excel is not None:
             input_path = os.path.join(tempfile.gettempdir(), po_file.name)
-            converted_po_path = os.path.join(tempfile.gettempdir(), "po_converted.xlsx")
-            with open(input_path, "wb") as f:
-                f.write(po_file.read())
-            convert_pdf_to_excel(input_path, converted_po_path)
+            converted_po_path = os.path.join(tempfile.gettempdir(), f"po_converted_{file_hash}.xlsx")
+
+            if st.session_state.get("po_conversion_key") != cache_key:
+                with open(input_path, "wb") as f:
+                    f.write(file_bytes)
+                with st.spinner(f"Converting {party} PO... this can take a while for some parties."):
+                    convert_pdf_to_excel(input_path, converted_po_path)
+                st.session_state["po_conversion_key"] = cache_key
+                st.session_state["po_conversion_path"] = converted_po_path
+            else:
+                converted_po_path = st.session_state["po_conversion_path"]
         else:
             converted_po_path = po_file
 
