@@ -155,14 +155,20 @@ def _ocr_row_batched(im, cols, y0, y1, psm=6, gap=24):
         slot = max(0, min(n_cols - 1, data["top"][i] // stride))
         # Within a slot, a wrapped multi-line cell (e.g. a 2-line Product
         # Name) needs its lines read top-to-bottom, then left-to-right on
-        # each - sort by (top, left), not left alone, or wrapped lines get
-        # interleaved with each other.
-        buckets[slot].append((data["top"][i], data["left"][i], word))
+        # each. Raw pixel `top` isn't a reliable primary sort key for
+        # that: same-line words can differ by a few px of `top` purely
+        # from font-metric noise (a capital letter vs. a lowercase one),
+        # which is enough to reorder same-line words if sorted on `top`
+        # before `left`. Tesseract's own `line_num` (stable per detected
+        # text line within this isolated, padded slot) is the reliable
+        # signal for which physical line a word is on; `left` then orders
+        # words within that same line.
+        buckets[slot].append((data["line_num"][i], data["left"][i], word))
 
     result = []
     for b in buckets:
-        b.sort(key=lambda t: t[0])
-        result.append(" ".join(w for _, w in b))
+        b.sort(key=lambda t: (t[0], t[1]))
+        result.append(" ".join(w for _, _, w in b))
     return result
 
 
@@ -212,6 +218,28 @@ def _clean_code(s):
     return re.sub(r"[^0-9]", "", str(s or ""))
 
 
+
+def _clean_date(s):
+    """OCR can misread characters in dates (e.g. '01 Oct 2026' read as
+    'O01 Oct 2026', or a 0 read as O / 1 as l). Pull out day / month name /
+    year, fix look-alike characters in the numeric parts, and return a
+    normalized 'DD Mon YYYY'. If it can't be understood, return the text
+    unchanged so nothing is silently invented."""
+    raw = str(s or "").strip()
+    m = re.search(r"([0-9OoIl|]{1,3})\s*([A-Za-z]{3,9})\.?,?\s*([0-9OoIl|]{4})", raw)
+    if not m:
+        return raw
+    fix = lambda t: re.sub(r"[Oo]", "0", re.sub(r"[Il|]", "1", t))
+    try:
+        day = int(fix(m.group(1)))
+        year = fix(m.group(3))
+        mon = m.group(2)[:3].title()
+        if not (1 <= day <= 31):
+            day = int(str(day)[-2:])
+        return f"{day:02d} {mon} {year}"
+    except Exception:
+        return raw
+
 # ------------------ HEADER EXTRACTION ------------------
 
 def extract_po_header(pdf_path, _pdf=None, _executor=None, _img_cache=None, _tables_cache=None):
@@ -245,9 +273,9 @@ def extract_po_header(pdf_path, _pdf=None, _executor=None, _img_cache=None, _tab
                 row1 = _ocr_row(im, cols, rows[1], rows[2], executor=executor)
                 if len(row0) >= 8:
                     po_no = row0[1].replace(" ", "")
-                    po_expiry = row0[7]
+                    po_expiry = _clean_date(row0[7])
                 if len(row1) >= 4:
-                    po_date = row1[3]
+                    po_date = _clean_date(row1[3])
 
         if len(header_boxes) > 4:
             x0, y0, x1, y1 = header_boxes[4]
@@ -334,7 +362,10 @@ def extract_line_items(pdf_path, _pdf=None, _executor=None, _img_cache=None, _ta
                 ry0, ry1 = row_y[r], row_y[r + 1]
                 if ry1 - ry0 < 8:
                     continue
-                vals = _ocr_row(im, cols, ry0, ry1, executor=executor)
+                # batch=True: 1 tesseract call for this row instead of 11 -
+                # see _ocr_row_batched for why this (not the thread pool
+                # above) is the real fix for a single-core deployment.
+                vals = _ocr_row(im, cols, ry0, ry1, batch=True)
                 if len(vals) < 11:
                     continue
                 row = dict(zip(headers, vals))
