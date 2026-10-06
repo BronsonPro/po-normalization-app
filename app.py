@@ -15,6 +15,64 @@ from email.mime.text import MIMEText
 # ================== BASE DIR ==================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# ================== UPDATE PARTY CODE SHEET (pushes to GitHub) ==================
+def push_party_code_to_github(file_bytes):
+    """Commit PartyCode.xlsx to the repo via the GitHub Contents API, so the
+    team never needs a GitHub login. Needs [github] token/repo in st.secrets."""
+    import base64
+    gh = st.secrets["github"]
+    repo = gh["repo"]                      # e.g. "BronsonPro/po-normalization-app"
+    branch = gh.get("branch", "main")
+    path = gh.get("party_code_path", "PartyCode.xlsx")
+    url = f"https://api.github.com/repos/{repo}/contents/{path}"
+    headers = {"Authorization": f"Bearer {gh['token']}", "Accept": "application/vnd.github+json"}
+
+    # Need the current file's sha to overwrite it
+    r = requests.get(url, headers=headers, params={"ref": branch}, timeout=30)
+    sha = r.json().get("sha") if r.status_code == 200 else None
+
+    payload = {
+        "message": "Update PartyCode.xlsx from PO app",
+        "content": base64.b64encode(file_bytes).decode(),
+        "branch": branch,
+    }
+    if sha:
+        payload["sha"] = sha
+    resp = requests.put(url, headers=headers, json=payload, timeout=60)
+    return resp.status_code in (200, 201), resp.text
+
+
+with st.expander("🛠 Update Party Code sheet"):
+    if "github" not in st.secrets:
+        st.info("GitHub connection not configured yet (add a [github] section in app secrets).")
+    else:
+        pc_upload = st.file_uploader("Upload new PartyCode.xlsx", type=["xlsx"], key="party_code_upload")
+        pc_pass = ""
+        if "update_password" in st.secrets["github"]:
+            pc_pass = st.text_input("Update password", type="password", key="party_code_pass")
+
+        if pc_upload and st.button("Update Party Code sheet on GitHub"):
+            if "update_password" in st.secrets["github"] and pc_pass != st.secrets["github"]["update_password"]:
+                st.error("Wrong password.")
+            else:
+                try:
+                    pc_bytes = pc_upload.getvalue()
+                    test_df = pd.read_excel(pc_upload)
+                    cols = " ".join(test_df.columns.astype(str)).lower()
+                    if not (("party" in cols and "name" in cols) and ("pin" in cols or "zip" in cols) and "code" in cols):
+                        st.error("This doesn't look like a Party Code sheet (needs Party Name, Pincode, Party Code columns). Not uploaded.")
+                    else:
+                        ok, msg = push_party_code_to_github(pc_bytes)
+                        if ok:
+                            # also use it right away in this running app
+                            with open(os.path.join(BASE_DIR, "PartyCode.xlsx"), "wb") as f:
+                                f.write(pc_bytes)
+                            st.success(f"Updated on GitHub ({len(test_df)} rows). The app redeploys in ~1 minute; the new sheet is already in use.")
+                        else:
+                            st.error(f"GitHub update failed: {msg}")
+                except Exception as e:
+                    st.error(f"Could not update: {e}")
+
 # ================== PARTY ==================
 party = st.selectbox("Select Party", ["Nykaa", "Nykaa Superstore", "Zepto", "TiraBeauty", "TataCliq", "BlinkIt", "Scootsy", "BigBasket", "Manash", "DMart", "Myntra", "Health & Glow", "Slikk", "FOY"])
 
