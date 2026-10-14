@@ -157,9 +157,10 @@ def clean_and_validate_line_items(df):
     def extract_int(x):
         if pd.isna(x):
             return 0
-        m = re.search(r"\d+", str(x))
+        s = str(x).replace(",", "").replace(" ", "").replace("\n", "")
+        m = re.search(r"\d+", s)
         return int(m.group()) if m else 0
-
+        
     def extract_rate(x):
         if pd.isna(x):
             return 0.00
