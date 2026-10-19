@@ -11,7 +11,7 @@ import pandas as pd
 import re
 
 
-PARTY_NAME = "CMUNITY INNOVATIONS PRIVATE LIMITED"
+PARTY_NAME = "City Mall"
 
 # Item line, e.g.
 # 1 CM03449498 Bronson Professional 4 In 1 Travel 96032900 500.00 226.61 12 2719.32 18.00 489.48 3208.80
