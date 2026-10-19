@@ -74,7 +74,7 @@ with st.expander("🛠 Update Party Code sheet"):
                     st.error(f"Could not update: {e}")
 
 # ================== PARTY ==================
-party = st.selectbox("Select Party", ["Nykaa", "Nykaa Superstore", "Zepto", "TiraBeauty", "TataCliq", "BlinkIt", "Scootsy", "BigBasket", "Manash", "DMart", "Myntra", "Health & Glow", "Slikk", "FOY"])
+party = st.selectbox("Select Party", ["Nykaa", "Nykaa Superstore", "Zepto", "TiraBeauty", "TataCliq", "BlinkIt", "Scootsy", "BigBasket", "Manash", "DMart", "Myntra", "Health & Glow", "Slikk", "FOY", "CityMall"])
 
 # ================== PARSER LOADING ==================
 convert_pdf_to_excel = None
@@ -93,7 +93,8 @@ parser_files = {
     "Myntra": "parsers/myntra.py",
     "Health & Glow": "parsers/healthandglow.py",
     "Slikk": "parsers/slikk.py",
-    "FOY": "parsers/Foy.py"
+    "FOY": "parsers/Foy.py",
+    "CityMall": "parsers/Citymall.py"
 }
 
 parser_path = os.path.join(BASE_DIR, parser_files.get(party, ""))
@@ -566,7 +567,8 @@ def read_normalized_po_table(excel_path):
         # Values will be populated from master file later
         pass
 
-    elif party in ("Nykaa", "Nykaa Superstore", "Manash", "BigBasket"):
+    elif party in ("Nykaa", "Nykaa Superstore", "Manash", "BigBasket", "CityMall"):
+    # CityMall: EAN column holds the CityMall Article ID (e.g. CM03449498) until it is mapped from master
     # These parties can have alphanumeric EANs (Nykaa Code / Purple SKU Code placeholders), so don't filter by numeric EAN
         df = df[
             ((df[qty_col] > 0) if qty_col else True) &
@@ -922,12 +924,35 @@ if po_df is not None and master_df is not None:
                     if is_master and "hsn code" in cl:
                         rename[c] = "HSN Code"
 
+                if party == "CityMall":
+                    if is_master and "taxable" in cl and "price" in cl:
+                        rename[c] = "Base Rate"
+
             df = df.rename(columns=rename)
             df = df.loc[:, ~df.columns.duplicated()]
             return df
 
         po = normalize(po, is_master=False)
         master = normalize(master, is_master=True)
+
+        # ---------- CITYMALL: Article ID → EAN from master ----------
+        if party == "CityMall":
+            art_col = next((c for c in master.columns if "article" in str(c).lower()), None)
+            if art_col is None:
+                st.error("❌ CityMall master is missing the 'Article ID' column")
+                st.stop()
+
+            master[art_col] = master[art_col].astype(str).str.strip().str.upper()
+            ean_clean = master["EAN"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+            article_to_ean = dict(zip(master[art_col], ean_clean))
+
+            po["Article ID"] = po["EAN"].astype(str).str.strip().str.upper()
+            po["EAN"] = po["Article ID"].map(article_to_ean)
+
+            missing = po.loc[po["EAN"].isna(), "Article ID"].tolist()
+            if missing:
+                st.error(f"❌ These CityMall Article IDs are not in the master file: {', '.join(missing)}. Add them to the master and run again.")
+                st.stop()
 
         # SCOOTSY FIX #3: Deduplicate on Item Code for Scootsy, EAN for others
         if party in ("Scootsy", "FOY"):
