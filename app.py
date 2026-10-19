@@ -1324,7 +1324,9 @@ if po_df is not None and master_df is not None:
                     
                     if label == "shipping address":
                         addr = str(final_raw.iloc[i, 1]) if pd.notna(final_raw.iloc[i, 1]) else ""
-                        pin_match = re.findall(r"\d{6}", addr)
+                        # Pincode = 6 digits not part of a longer number (skips phone/plot/survey numbers).
+                        # Same rule as the "keep only pincode" step below, so both always agree.
+                        pin_match = re.findall(r"(?<!\d)[1-9]\d{5}(?!\d)", addr)
                         if pin_match:
                             shipping_pin = pin_match[0]
                 
@@ -1420,7 +1422,7 @@ if po_df is not None and master_df is not None:
                 val_cell = row[1]
                 if val_cell.value:
                     addr_text = str(val_cell.value)
-                    pin_match = re.search(r"\b[1-9][0-9]{5}\b", addr_text)
+                    pin_match = re.search(r"(?<!\d)[1-9]\d{5}(?!\d)", addr_text)
                     if pin_match:
                         val_cell.value = pin_match.group(0)
                     else:
