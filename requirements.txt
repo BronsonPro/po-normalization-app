@@ -5,3 +5,4 @@ pdfplumber>=0.10.0
 requests>=2.31.0
 Pillow>=10.0.0
 pytesseract
+xlrd>=2.0.1
