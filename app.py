@@ -74,7 +74,7 @@ with st.expander("🛠 Update Party Code sheet"):
                     st.error(f"Could not update: {e}")
 
 # ================== PARTY ==================
-party = st.selectbox("Select Party", ["Nykaa", "Nykaa Superstore", "Zepto", "TiraBeauty", "TataCliq", "BlinkIt", "Scootsy", "BigBasket", "Manash", "DMart", "Myntra", "Health & Glow", "Slikk", "FOY", "CityMall"])
+party = st.selectbox("Select Party", ["Nykaa", "Nykaa Superstore", "Zepto", "TiraBeauty", "TataCliq", "BlinkIt", "Scootsy", "BigBasket", "Manash", "DMart", "Myntra", "Health & Glow", "Slikk", "FOY", "CityMall", "Flipkart Minutes"])
 
 # ================== PARSER LOADING ==================
 convert_pdf_to_excel = None
@@ -94,7 +94,8 @@ parser_files = {
     "Health & Glow": "parsers/healthandglow.py",
     "Slikk": "parsers/slikk.py",
     "FOY": "parsers/Foy.py",
-    "CityMall": "parsers/Citymall.py"
+    "CityMall": "parsers/Citymall.py",
+    "Flipkart Minutes": "parsers/flipkart_minutes.py"
 }
 
 parser_path = os.path.join(BASE_DIR, parser_files.get(party, ""))
@@ -567,7 +568,8 @@ def read_normalized_po_table(excel_path):
         # Values will be populated from master file later
         pass
 
-    elif party in ("Nykaa", "Nykaa Superstore", "Manash", "BigBasket", "CityMall"):
+    elif party in ("Nykaa", "Nykaa Superstore", "Manash", "BigBasket", "CityMall", "Flipkart Minutes"):
+    # Flipkart Minutes: rows with a blank EAN carry the FSN until it is mapped from master
     # CityMall: EAN column holds the CityMall Article ID (e.g. CM03449498) until it is mapped from master
     # These parties can have alphanumeric EANs (Nykaa Code / Purple SKU Code placeholders), so don't filter by numeric EAN
         df = df[
@@ -928,12 +930,43 @@ if po_df is not None and master_df is not None:
                     if is_master and "taxable" in cl and "price" in cl:
                         rename[c] = "Base Rate"
 
+                if party == "Flipkart Minutes":
+                    if is_master and "cost price" in cl and "excl" in cl:
+                        rename[c] = "Base Rate"
+
             df = df.rename(columns=rename)
             df = df.loc[:, ~df.columns.duplicated()]
             return df
 
         po = normalize(po, is_master=False)
         master = normalize(master, is_master=True)
+
+        # ---------- FLIPKART MINUTES: FSN → EAN for rows where the PO has no EAN ----------
+        if party == "Flipkart Minutes":
+            po["EAN"] = po["EAN"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+            no_ean = ~po["EAN"].str.fullmatch(r"\d{8,14}")
+
+            if no_ean.any():
+                fsn_col = next((c for c in master.columns if "fsn" in str(c).lower()), None)
+                fsn_to_ean = {}
+                if fsn_col is not None:
+                    m_ok = master[master[fsn_col].notna()]
+                    fsn_to_ean = dict(zip(
+                        m_ok[fsn_col].astype(str).str.strip().str.upper(),
+                        m_ok["EAN"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+                    ))
+
+                fsn_values = po.loc[no_ean, "EAN"].str.upper()
+                mapped = fsn_values.map(fsn_to_ean)
+                still_missing = fsn_values[mapped.isna()].tolist()
+                if still_missing:
+                    st.error(
+                        "❌ These Flipkart items have no EAN in the PO and their FSN is not in the master: "
+                        + ", ".join(still_missing)
+                        + ". Add an 'FSN' column to the Flipkart master with these FSNs against the right EAN, and run again."
+                    )
+                    st.stop()
+                po.loc[no_ean, "EAN"] = mapped
 
         # ---------- CITYMALL: Article ID → EAN from master ----------
         if party == "CityMall":
